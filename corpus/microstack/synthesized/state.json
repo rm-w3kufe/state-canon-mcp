@@ -1,0 +1,25 @@
+{
+  "system": "microstack",
+  "reconciled_at": "2026-07-20T02:00Z",
+  "services": [
+    {"name": "api",       "node": "node-a", "declared": "active",   "actual": "running", "version": "1.2.0", "depends_on": ["db", "cache"]},
+    {"name": "proxy",     "node": "node-a", "declared": "active",   "actual": "running", "version": "0.9.0", "depends_on": ["api"]},
+    {"name": "metrics",   "node": "node-a", "declared": "active",   "actual": "running", "version": "2.1.0", "depends_on": []},
+    {"name": "worker",    "node": "node-b", "declared": "active",   "actual": "running", "version": "1.1.0", "depends_on": ["db"]},
+    {"name": "db",        "node": "node-b", "declared": "active",   "actual": "running", "version": "14",    "depends_on": []},
+    {"name": "cache",     "node": "node-b", "declared": "active",   "actual": "stopped", "version": "7",     "depends_on": []},
+    {"name": "scheduler", "node": "node-c", "declared": "active",   "actual": "running", "version": "0.4.0", "depends_on": ["worker"]},
+    {"name": "logger",    "node": "node-c", "declared": "active",   "actual": "running", "version": "3.0.0", "depends_on": []},
+    {"name": "backup",    "node": "node-c", "declared": "inactive", "actual": "stopped", "version": "1.0.0", "depends_on": ["db"]}
+  ],
+  "drift": [
+    {"id": "DRIFT-1", "kind": "declared_active_but_stopped", "service": "cache", "node": "node-b",
+     "detail": "declared active v7 but no process found in the node-b snapshot", "impacts": ["api"]},
+    {"id": "DRIFT-2", "kind": "rule_violation", "rule": "R1", "services": ["api@1.2.0", "worker@1.1.0"],
+     "detail": "api and worker versions differ (1.2.0 vs 1.1.0) — R1 requires them equal"},
+    {"id": "DRIFT-3", "kind": "orphan", "process": "debug-shell", "pid": 303, "node": "node-c",
+     "detail": "running process not present in the declared manifest — violates R3"}
+  ],
+  "rules": ["R1", "R2", "R3"],
+  "last_decision": {"id": "D-42", "text": "Approved cache upgrade to v8; maintenance scheduled 2026-07-25"}
+}

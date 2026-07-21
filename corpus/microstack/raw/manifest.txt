@@ -1,0 +1,11 @@
+# microstack — declared service manifest
+# format: service | node | declared_state | version | depends_on
+api       | node-a | active   | 1.2.0 | db,cache
+proxy     | node-a | active   | 0.9.0 | api
+metrics   | node-a | active   | 2.1.0 | -
+worker    | node-b | active   | 1.1.0 | db
+db        | node-b | active   | 14    | -
+cache     | node-b | active   | 7     | -
+scheduler | node-c | active   | 0.4.0 | worker
+logger    | node-c | active   | 3.0.0 | -
+backup    | node-c | inactive | 1.0.0 | db
