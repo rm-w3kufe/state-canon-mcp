@@ -4,11 +4,9 @@
 > A state-grounded RAG that puts *verified current state in the agent's path*, so it reasons from ground
 > truth instead of stale recall or costly re-derivation.
 
-**Status:** early / exploratory. The thesis and the method are real (and battle-tested in daily use) —
-the method itself is documented in **[METHODOLOGY.md](./METHODOLOGY.md)** (the two-agent pattern, with
-the real four-round case study). The public tooling is being extracted and **the token-savings claim is
-being measured, not proclaimed** — the number and its method will ship together (see *Measured, not
-proclaimed*).
+**Status:** early / exploratory — the thesis and the method are battle-tested in daily use; the public
+tooling is being extracted and **the token-savings claim is being measured, not proclaimed**. Full status
+below. Stdlib-only, no dependencies. The method itself is a separate read: **[METHODOLOGY.md](./METHODOLOGY.md)**.
 
 ---
 
@@ -24,19 +22,20 @@ careful, more *verifiable* work at lower token cost.
 
 Swarms burn tokens re-deriving context, coordinating, and duplicating. The bottleneck was never *how many
 agents* — it's **whether each decision is grounded and verified.** Fix that, and two agents go a long way.
+The full pattern — roles, boundaries, the real case study — is in **[METHODOLOGY.md](./METHODOLOGY.md)**.
 
-## Why it works — the control system
+### Why it works — the control system
 
 1. **Grounded, not re-derived.** The current, reconciled state of the system is injected into the agent's
-   path. It doesn't re-explore the world each session; it reads verified ground truth. *This is the anchor
-   (below).*
+   path. It doesn't re-explore the world each session; it reads verified ground truth. *This is what this
+   tool provides.*
 2. **Verify at every boundary.** The reasoning agent never trusts the execution agent's *report* — it
    checks the live state directly ("is the service actually running?", not "did you say it is?").
 3. **Right model for the right layer.** Expensive reasoning only where it pays; cheap execution everywhere
    else. A cost/latency lever the swarm can't pull.
 4. **Compact, machine-primary artifacts.** State and handoffs are terse and structured, not prose.
 
-## The anchor — a state-grounded RAG, as an MCP
+## What it is — a state-grounded RAG, as an MCP
 
 Not a vector-RAG over documents. A **state RAG**: a canonical store written on every change, a **reconciler**
 that keeps it ≡ reality (drift/orphan detection), and an *onboard* step that injects the current state into
@@ -51,45 +50,239 @@ Exposed over the Model Context Protocol so *any* agent can plug in:
 | `state_verify(claim)` | ★ *don't trust the report — check it against ground truth* → `{holds, actual, evidence}` |
 | `state_reconcile(domain)` | model≡reality → the drift / orphan report |
 
-Plus resources (`state://digest`, `state://rules`, `state://handoff`) for clients that inject context up front.
+Plus resources (`state://digest`, `state://schema`, `state://rules`, `state://handoff`) for clients that
+inject context up front. The split is deliberate — **resources** feed the front-load (inject the digest at
+session start); **tools** feed the lazy path (query only what you need).
 
-**It's domain-agnostic.** You register your own `StateProvider` (SQLite, JSON, an API — anything) and a
-`Reconciler` (how to observe reality for each domain). See [`INTERFACE.md`](./INTERFACE.md).
+**It's domain-agnostic.** You register your own `StateProvider` (SQLite, JSON, Git, an API — anything) and
+a `Reconciler` (how to observe reality for each domain). Full abstraction, reference instances, the Git/VCS
+instance, remote mode, and composing with other context sources: **[INTERFACE.md](./INTERFACE.md)**.
 
-**It composes.** State RAG is one instrument, not the whole rack: attach it over MCP side-by-side with
-your content RAG, your memory server, your other tools. The discipline that keeps the ensemble honest
-is **authority ordering** — for *current* truth, reconciled state outranks memory and documents
-(details in [`INTERFACE.md`](./INTERFACE.md)).
+**It composes.** State RAG is one instrument, not the whole rack: attach it over MCP side-by-side with your
+content RAG, your memory server, your other tools. The discipline that keeps the ensemble honest is
+**authority ordering** — for *current* truth, reconciled state outranks memory and documents.
+
+## Install
+
+**Requirements:** Python **3.10+**. Nothing else — the server is stdlib-only, there is no `pip install`.
+
+```bash
+git clone <this-repo> state-rag-mcp
+python3 state-rag-mcp/tests/test_state_rag.py   # optional: 22 checks, ~1s
+```
+
+The server is one command (stdio; your MCP client spawns it):
+
+```bash
+python3 /abs/path/state-rag-mcp/mcp_server.py --state      /abs/path/your-state.json
+python3 /abs/path/state-rag-mcp/mcp_server.py --sqlite     /abs/path/your-state.db     # any SQLite DB
+python3 /abs/path/state-rag-mcp/mcp_server.py --git        /abs/path/your-repo         # a git working tree
+python3 /abs/path/state-rag-mcp/mcp_server.py --microstack /abs/path/state-rag-mcp/corpus/microstack  # demo
+```
+
+> **Architecture note:** the server runs **locally, beside your agent** (stdio). Your state lives where
+> your agent lives. It is not a network service and does not phone anywhere. (Remote *state* is supported at
+> the provider layer — see [INTERFACE.md](./INTERFACE.md).)
+
+### Per-client configuration
+
+All stdio MCP clients need the same three facts: `command: python3`, `args: [launcher, --flag, path]`.
+Use **absolute paths** everywhere.
+
+**Claude Code (CLI):**
+```bash
+claude mcp add state-rag -- python3 /abs/path/state-rag-mcp/mcp_server.py --state /abs/path/state.json
+```
+or per-project in `.mcp.json` / **Claude Desktop** in `claude_desktop_config.json`:
+```json
+{ "mcpServers": { "state-rag": {
+    "command": "python3",
+    "args": ["/abs/path/state-rag-mcp/mcp_server.py", "--state", "/abs/path/state.json"] } } }
+```
+
+**OpenCode** (`opencode.json`, 0.x shape):
+```json
+{ "mcp": { "state-rag": {
+    "type": "local",
+    "command": ["python3", "/abs/path/state-rag-mcp/mcp_server.py", "--state", "/abs/path/state.json"] } } }
+```
+
+**Cursor** (`.cursor/mcp.json`), **Cline** (`cline_mcp_settings.json`), **Windsurf**
+(`~/.codeium/windsurf/mcp_config.json`) — all use the same `mcpServers` shape as Claude Desktop above.
+
+### Verify the install (no client needed)
+
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  | python3 /abs/path/state-rag-mcp/mcp_server.py --microstack /abs/path/state-rag-mcp/corpus/microstack
+```
+
+You should see one JSON line with `"serverInfo": {"name": "state-rag-mcp"}`.
+
+## Quickstart — the 60-second demo
+
+The repo ships a tiny fictional deployment (`corpus/microstack/`) with **three seeded drifts**: a service
+declared active but actually stopped, a rule violation, and an orphan process.
+
+**1. Ask for the whole picture:**
+```bash
+cd state-rag-mcp
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state_onboard","arguments":{}}}' \
+  | python3 mcp_server.py --microstack corpus/microstack
+```
+→ one compact digest: 9 services, the 3 drifts (recomputed live from the raw files, not read from a
+snapshot), the rules, the last recorded decision.
+
+**2. Catch a lie** — claim that `cache` is running, against ground truth:
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state_verify","arguments":{"domain":"services","filter":{"name":"cache"},"expect":{"actual":"running"}}}}' \
+  | python3 mcp_server.py --microstack corpus/microstack
+```
+→ `"holds": false` **with evidence**: declared `active`, observed `stopped`. That is the whole philosophy in
+one call: *don't trust the report — verify against state.*
+
+**3. With your agent attached**, ask it:
+- *"What's the current state of the system? Any drift?"* → it calls `state_onboard` once.
+- *"Is the cache service consistent with what's declared?"* → it calls `state_query` / `state_verify`.
+
+**The usage pattern that measured best** (see [Measured](#measured-not-proclaimed)): **inject the digest
+once at session start** (cheapest for broad questions), then **use targeted `state_query` for follow-ups**
+(cheapest for narrow ones). Cold re-exploration is always the most expensive.
+
+## Onboarding your system — three steps
+
+### Step 1 — point the server at your state
+
+**JSON (quickest start).** Any JSON document whose top-level keys hold lists of records:
+```json
+{ "system": "my-stack",
+  "services": [ {"name": "api", "state": "running", "version": "1.2.0"} ],
+  "rules":    [ "api and worker versions must match" ],
+  "last_decision": {"id": "D-1", "text": "approved cache upgrade"} }
+```
+```bash
+python3 mcp_server.py --state /abs/path/my-state.json
+```
+
+**SQLite.** Every table/view becomes a queryable domain automatically — or pass an explicit mapping (see
+`instances/sqlite_ops.py` for a real production example). Opened read-only by construction (`mode=ro`):
+```python
+from state_rag.sqlite_provider import SqliteStateProvider
+provider = SqliteStateProvider("ops.db",
+    domains={"services": "services", "blockers": "v_open_blockers"},
+    meta={"system": "my-stack"})
+```
+
+**Git.** `--git /path/to/repo` — the working tree becomes a live drift report (see [INTERFACE.md](./INTERFACE.md)).
+
+**An API / anything.** Implement two methods (this **is** remote mode — the server stays local, the
+provider crosses the wire; an SSH-channel provider is the same shape):
+```python
+from state_rag.provider import StateProvider
+import json, urllib.request
+
+class ApiStateProvider(StateProvider):
+    def __init__(self, base_url): self.base = base_url
+    def list_domains(self): return ["services", "incidents", "meta"]
+    def query(self, domain, filter=None):
+        if domain == "meta": return [{"system": "my-stack"}]
+        with urllib.request.urlopen(f"{self.base}/{domain}") as r: records = json.load(r)
+        if filter: records = [x for x in records if all(x.get(k) == v for k, v in filter.items())]
+        return records
+```
+
+### Step 2 — shape the digest (what matters at onboard)
+
+Raw dumps don't belong in a model's context (our first real-canon digest weighed 44k chars; the policy cut
+it to 12k). Declare what matters per domain — detail is never lost, it stays one `state_query` away:
+```python
+DIGEST_POLICY = {
+    "services": {"fields": ["name", "state", "version"], "max": 60},
+    "deploys":  {"fields": ["component", "result"], "max": 5, "last": True},
+    "audit_log": {"skip": True},          # queryable, but not onboard material
+}
+```
+
+### Step 3 (optional but recommended) — add a reconciler
+
+This is where the RAG earns its keep: **declared vs observed → typed drift**, computed live.
+```python
+from state_rag.reconcile import Reconciler
+
+class MyReconciler(Reconciler):
+    domain = "services"
+    def declared(self):   # the model: your manifest / DB / config
+        return load_manifest()
+    def observe(self):    # the reality: ps, systemctl, an API probe...
+        return probe_running_processes()
+```
+The generic diff yields `declared_but_missing`, `orphan`, and your registered `rule_violation`s — exactly
+the three drift kinds seeded in the demo. Wire it in an instance module (`instances/microstack.py` is the
+40-line reference).
+
+## Use cases
+
+| Scenario | Call pattern |
+|---|---|
+| Agent session start — "where am I?" | `state://digest` resource injected, or one `state_onboard` |
+| "Is service X ok?" mid-session | `state_query(services, {name: X})` — ~80 tokens |
+| Reviewing another agent's (or person's) report | `state_verify(domain, filter, expect)` → holds/mismatches + evidence |
+| Post-deploy sanity | `state_reconcile()` → live drift list (orphans, missing, rule violations) |
+| CI gate | run the reconcile in a script; fail the pipeline if drift ≠ expected |
 
 ## Measured, not proclaimed
 
 We refuse to ship a token-savings number we haven't earned. [EXPERIMENT.md](./corpus/microstack/EXPERIMENT.md)
-defines a reproducible experiment: the same tasks run **cold** (agent re-explores) vs **onboard** (state injected) vs
-**MCP** (state queried), on a small controlled corpus ([`corpus/microstack/`](./corpus/microstack/)), same
-model, ≥5 trials, **scored for correctness** (savings that produce a wrong answer are disqualified). The
-honest finding is likely a *trade-off* — onboard wins broad tasks, lazy MCP wins narrow ones — and we'll
-report it that way, including the case where the difference is small.
+defines a reproducible experiment: the same tasks run **cold** (agent re-explores) vs **onboard** (state
+injected) vs **MCP** (state queried), on a small controlled corpus, same model, ≥5 trials, **scored for
+correctness** (savings that produce a wrong answer are disqualified). The honest finding is a *trade-off* —
+onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — reported that way in
+[RESULTS.md](./corpus/microstack/RESULTS.md), caveats and all.
 
 ## Status (honest)
 
 | piece | state |
 |---|---|
 | Thesis + method | ✅ in daily use |
-| Interface design (v0) | ✅ `INTERFACE.md` |
-| Controlled measurement corpus | ✅ `corpus/microstack/` |
-| Cold vs onboard measurement (C0/C1) | ✅ direction confirmed (~43% input savings, correctness intact) — token counts estimated, not yet publication-grade |
-| MCP server (stdlib-only, enables the query path / C2) | ✅ prototyped — 22/22 checks + end-to-end stdio smoke |
-| MCP measurement (C2) | ✅ trade-off characterized (onboard wins broad, lazy query wins narrow, cold always loses; correctness intact) — publication-grade counters still pending (real MCP attach + billed usage) |
-| Behavioral finding → interface feedback | ✅ agents default to the broadest tool → cost hints now steer tool choice |
-| Second living instance (generic SQLite provider over a real production canon) | ✅ 14/14 structural checks; digest policy born from a real 44k→12k lesson |
-| Remote mode (remote state, local server) | ✅ by design at the provider layer — the `ApiStateProvider` example is remote mode; pattern + considerations in `INTERFACE.md`. Remote MCP *transport* = open integration point, not shipped |
-| Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git` flag) — the three drift kinds fall out of `git status`; read-only by subcommand allow-list; 17/17 self-contained checks |
-| The two roles as adoptable agent specs | ✅ `agents/reasoner.md` + `agents/executor.md` — the method made installable |
+| MCP server (stdlib-only) | ✅ 22/22 checks + end-to-end stdio smoke |
+| Controlled corpus + experiment | ✅ trade-off characterized (onboard wins broad, lazy query wins narrow, cold always loses; correctness intact) |
+| Second living instance (SQLite over a real production canon) | ✅ 14/14 structural checks; digest policy born from a real 44k→12k lesson |
+| Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
+| Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
+| Skills (9) + agent specs (2) | ✅ the disciplines and the two roles, installable |
+| Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |
 
-*Legend of honesty: ✅ built and tested · ⬜ declared/roadmap. `METHODOLOGY.md` is practice
-documentation (the pattern we run daily), not orchestration code — nothing in this repo pretends to
-be what it isn't.*
+*Legend: ✅ built and tested · ⬜ declared/roadmap. `METHODOLOGY.md`, `skills/` and `agents/` are practice
+documentation (the pattern we run daily), not orchestration code — nothing here pretends to be what it isn't.*
+
+## Going deeper
+
+- **[METHODOLOGY.md](./METHODOLOGY.md)** — the two-agent pattern: roles, the four boundaries where quality
+  is made, the real four-round case study, and the honest limits.
+- **[INTERFACE.md](./INTERFACE.md)** — extending & integrating: the provider abstraction, reference
+  instances, the Git/VCS instance, remote mode, and composing with other context sources.
+- **[skills/](./skills/)** — the nine disciplines as portable, installable skills (each with its scar).
+- **[agents/](./agents/)** — the two roles (`reasoner` · `executor`) as adoptable agent specs.
+- **[corpus/microstack/](./corpus/microstack/)** — the measurement corpus, experiment design, and results.
+
+## Repository layout
+
+```
+state-rag-mcp/
+├── README.md            ← this file (what it is · install · usage · status)
+├── METHODOLOGY.md       ← the two-agent pattern (the method behind the tool)
+├── INTERFACE.md         ← extending & integrating (abstraction · git · remote · composition)
+├── skills/              ← the disciplines as portable skills (9 · installable in Claude Code)
+├── agents/              ← the two roles as adoptable agent specs (reasoner · executor)
+├── mcp_server.py        ← one-file launcher for any MCP client
+├── state_rag/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · server
+├── instances/           ← reference instances (microstack demo · a real SQLite canon · git)
+└── corpus/microstack/   ← controlled measurement corpus
+    ├── raw/             ← what a COLD agent faces (must synthesize)
+    ├── synthesized/     ← the reconciled state (the RAG's product)
+    ├── EXPERIMENT.md · RESULTS.md · GROUND_TRUTH.md · TASKS.md
+```
 
 ## Lineage & philosophy
 
@@ -98,32 +291,10 @@ viable when it can be *described*, *governed*, and *audited*. "Don't trust, veri
 it's the reconciler and the verify-at-every-boundary discipline made mechanical. Community-first, and
 deliberately **from the Global South** — the heir to Cybersyn's bet that good cybernetics serves people.
 
-## Repository layout
-
-```
-state-rag-mcp/
-├── README.md            ← this file
-├── INSTALL.md           ← per-client setup (Claude Code/Desktop, OpenCode, Cursor, Cline, Windsurf)
-├── USAGE.md             ← 60-second demo · onboarding your system · provider examples · use cases
-├── METHODOLOGY.md       ← the two-agent pattern (the method behind the tool)
-├── skills/              ← the disciplines as portable skills (9 · installable in Claude Code)
-├── agents/              ← the two roles as adoptable agent specs (reasoner · executor)
-├── INTERFACE.md         ← the MCP surface + the provider abstraction
-├── mcp_server.py        ← one-file launcher for any MCP client
-├── state_rag/           ← the library (stdlib-only): provider · sqlite_provider · git_provider · reconcile · digest · server
-├── instances/           ← reference instances (microstack demo · a real SQLite production canon)
-└── corpus/microstack/   ← controlled measurement corpus
-    ├── raw/             ← what a COLD agent faces (must synthesize)
-    ├── synthesized/     ← the reconciled state (the RAG's product)
-    ├── EXPERIMENT.md    ← the measurement design (public arm)
-    ├── GROUND_TRUTH.md  ← scoring key
-    └── TASKS.md         ← the 2 fixed tasks + conditions
-```
-
 ## License
 
 Code: **Apache-2.0** ([LICENSE](./LICENSE)) · Docs: **CC-BY-4.0**.
 
-This module is deliberately more permissive than the AGPL core it was extracted from — it is meant
-to be adopted, embedded, and improved by the community. Improvements can flow back; the module stays
-clean of AGPL code by construction.
+This module is deliberately more permissive than the AGPL core it was extracted from — it is meant to be
+adopted, embedded, and improved by the community. Improvements can flow back; the module stays clean of
+AGPL code by construction.

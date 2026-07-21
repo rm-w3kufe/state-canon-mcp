@@ -1,32 +1,11 @@
-# state-rag-mcp — interface design (v0 draft)
+# State RAG MCP — extending & integrating
 
-Draft informed by the 2 EXP-TOKEN-GROUNDING tasks. To be **validated/refined by the C0/C1/C2 numbers**
-(the measurement shapes the form). Design sketch: `docs/plan/METHODOLOGY_VITRINE.vsm`.
+The tool/resource surface — `state_onboard` · `state_query` · `state_verify` · `state_reconcile`, plus the
+`state://…` resources — is documented in the **[README](./README.md#what-it-is--a-state-grounded-rag-as-an-mcp)**.
+This document is the deeper reference: **extending** the tool (plugging in your own state) and **integrating**
+it alongside other context sources.
 
-## The MCP surface
-
-### Tools — parameterized queries the agent *calls* (C2 lazy path)
-| tool | signature | returns | answers |
-|---|---|---|---|
-| `state_onboard` | `() ` | digest: services+status, open drift, rules, last decision | the whole broad picture in one call |
-| `state_query` | `(domain, filter?)` | records | a narrow slice — `domain ∈ {services, drift, rules, topology, decisions}` |
-| `state_verify` | `(claim)` | `{holds, actual, evidence}` | ★ "don't trust the report, verify against ground truth" |
-| `state_reconcile` | `(domain?)` | `[drift]` | model≡reality: declared vs observed → drift/orphan report |
-| `memory_search` | `(topics)` | `[finding]` | (optional) non-derivable findings/memory |
-
-### Resources — addressable read-only context the client *injects/reads* (C1 onboard path)
-| uri | content |
-|---|---|
-| `state://digest` | same as `state_onboard()` — for clients that inject context up front |
-| `state://schema` | domains + their fields |
-| `state://rules` | active rules |
-| `state://handoff` | last decision / session block |
-
-The split is deliberate: **resources** feed the front-load (C1 onboard injects `state://digest`);
-**tools** feed the lazy path (C2 calls `state_query`/`state_verify` for only what it needs). Same
-backing state, two consumption modes — which is exactly the trade-off the experiment measures.
-
-## The abstraction — decouple from `state.db` → generic provider (the real work)
+## The abstraction — a generic provider (the real work)
 The core is domain-agnostic; a user plugs in their own state:
 - **`StateProvider`** (user implements): `list_domains()` · `query(domain, filter)` · `schema(domain)`
 - **`Reconciler`** (user registers per domain): `observe(domain) -> reality` · `diff(declared, reality) -> [drift]`
@@ -73,8 +52,8 @@ layer** — and the plug already exists.
 
 **The recommended pattern — remote STATE, local SERVER.** The MCP server stays local beside the
 agent (stdio, local-first); its `StateProvider` is what reaches over the wire. The provider
-abstraction *is* the plug: `query()` can be implemented over HTTP (the `ApiStateProvider` example in
-USAGE.md is already remote mode), over SSH (a subprocess calling a remote query command — our own
+abstraction *is* the plug: `query()` can be implemented over HTTP (the `ApiStateProvider` example in the
+[README](./README.md#onboarding-your-system--three-steps) is already remote mode), over SSH (a subprocess calling a remote query command — our own
 production channel), over a message bus, gRPC — the core neither knows nor cares.
 **Channel-agnostic by construction**, because the channel is entirely the provider's business.
 
