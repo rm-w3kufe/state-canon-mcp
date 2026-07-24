@@ -36,11 +36,11 @@ full pattern — the single-agent loop, boundaries, the real case study — is i
 
 ```mermaid
 flowchart LR
-    H["human<br/>policy + approval"] -->|sets policy| K
     K[("canon<br/>verified state")] -->|onboard| A["agent<br/>design · execute"]
-    A -->|claim| V{"verify live<br/>vs canon"}
+    A -->|"claim: done"| V{"verify LIVE<br/>vs canon,<br/>not the report"}
     V -->|verified| K
-    V -->|defect| A
+    V -->|defect found| A
+    H["human<br/>policy + approval"] -.->|gates the irreversible| A
 ```
 
 ### Why it works
