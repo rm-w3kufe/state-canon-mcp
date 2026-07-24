@@ -1,4 +1,4 @@
-"""state_rag — a state-grounded RAG for agents, exposed over MCP.
+"""state_canon — a state-grounded RAG for agents, exposed over MCP.
 
 Core abstraction (see INTERFACE.md):
   StateProvider   — read-only interface over YOUR canonical state store

@@ -108,7 +108,7 @@
 
 ## The MCP server
 
-The MCP server is at `projects/state-rag-mcp/`. Architecture:
+The MCP server is at `projects/state-canon/`. Architecture:
 - **stdlib JSON-RPC 2.0 stdio** — no frameworks, no Flask, no FastAPI. Simple `input()` / `print()` loop.
 - **4 tools**: `state_onboard`, `state_query`, `state_verify`, `state_reconcile`.
 - **Corpus**: `corpus/microstack/` — a controlled 9-service system with 3 known drifts.

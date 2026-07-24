@@ -10,7 +10,7 @@ markdown you can drop into system context.
 **Install (Claude Code):** copy a skill directory into `.claude/skills/` (project) or
 `~/.claude/skills/` (personal). The `description` is what tells the agent *when* to load it.
 
-**They compose with State RAG** — several disciplines lean on having a ground truth to check
+**They compose with state-canon** — several disciplines lean on having a ground truth to check
 against (`state_verify`, `state_reconcile`). They work without it, but verification degrades from
 *mechanical* to *manual*.
 

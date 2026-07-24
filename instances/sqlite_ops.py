@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from state_rag.sqlite_provider import SqliteStateProvider
+from state_canon.sqlite_provider import SqliteStateProvider
 
 DOMAINS = {
     # canonical query surface

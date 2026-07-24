@@ -1,46 +1,59 @@
-# The Two-Agent Pattern
+# The Canon-Grounded Agent
 
-> The industry bet: more agents = better work. Our bet: **two agents + verified state + disciplined
-> boundaries** produce more careful work than a swarm — at a fraction of the token cost. This document
-> is the pattern we actually run every day, including the failures that shaped it.
+> The industry bet: more agents = better work. Our bet: **one agent grounded in verified canon +
+> disciplined boundaries** produces more careful work than a swarm — at a fraction of the token cost.
+> The quality was never in the head-count; it is in whether every claim is grounded in canon and
+> verified against reality. This document is the pattern we actually run every day, including the
+> failures that shaped it.
 
 ## The roles
 
-| Role | Runs on | Does | Never does |
-|---|---|---|---|
-| **Reasoner** | an advanced model | architecture, design, review, root-cause analysis, verification | routine execution (waste of an expensive model) |
-| **Executor** | a cost-efficient model | builds, deploys, runs tests, reports | design decisions, irreversible actions without a checkpoint |
-| **Human** | — | policy, priorities, approval of irreversible / outward-facing changes | micromanaging either agent |
+| Role | Does | Never does |
+|---|---|---|
+| **Agent** (an advanced model) | architecture, design, execution, root-cause analysis, and **verifying its own claims against live ground truth** | trusting its own report over the live state; irreversible / outward-facing actions without approval |
+| **Human** | policy, priorities, approval of irreversible / outward-facing changes | micromanaging the agent; hand-editing managed state |
 
-In VSM terms (the lineage behind this): the executor is **S1** (operations), the reasoner is **S3/S4**
-(control + intelligence), the human is **S5** (policy). The point is not the labels — it's that the
-three never collapse into one undifferentiated "agent doing everything," and *neither role trusts the
-other's claims without verification*.
+In VSM terms (the lineage behind this): the agent spans **S1–S4** (operations + coordination + control
++ intelligence), the human is **S5** (policy). The load-bearing separation is not between two agents —
+it is between **acting and verifying that action against canon**. The agent does both, but never lets
+the second collapse into "I remember doing it." Canon is external to its reasoning; that externality is
+what keeps the verification honest.
+
+> **Why one agent, not two.** Earlier versions of this pattern used two — a reasoner reviewing an
+> executor — to guarantee that *what verifies a claim is not what produced it*. That guarantee does not
+> require a second agent; it requires verification against **canon external to the agent's reasoning**.
+> One agent that reads the artifact's hash instead of trusting its memory of the deploy has the same
+> property at lower cost. (Two agents remain a valid scaling — a reviewer + an executor — and the case
+> study below happened to run that way. The invariant is grounding, not the number of agents.)
 
 ## Where quality is actually made: the boundaries
 
 The swarm assumption is that quality comes from adding workers. In practice, quality is made (or
-lost) at four boundaries:
+lost) at four boundaries — none of which is *between two agents*; they are between **action and its
+verification**, wherever that action originates:
 
-**1. Framed handoffs.** Every task crosses the reasoner→executor boundary as a *framed prompt*: a
-delimited, self-contained block with context, exact scope, ordered steps, what NOT to touch, and an
-explicit stop-point. No ambient context, no "you know what I mean."
+**1. Framed tasks.** Every task is stated as a *framed contract*: a delimited, self-contained block
+with context, exact scope, ordered steps, what NOT to touch, and an explicit stop-point. Whether the
+human frames it for the agent or the agent frames a sub-task for itself, the discipline is the same —
+no ambient context, no "you know what I mean."
 
-**2. Verify live, never trust the report.** When the executor reports "deployed and verified," the
-reasoner checks the *live system* — the running process, the actual binary hash, the real log — not
-the report. This is not distrust of the executor; it is the design assumption that **any** single
-observer (human or model) can be wrong about its own work.
+**2. Verify live, never trust the report.** When the work reports "deployed and verified," the agent
+checks the *live system* — the running process, the actual binary hash, the real log — not its own
+account of it. This is the design assumption that **any** single observer, including yourself one step
+ago, can be wrong about its own work. A new process running the OLD binary looks identical to success
+until you check the hash.
 
 **3. Confirm-first checkpoints.** Diagnosis before patching ("PASO 0"), pilot before fleet, one
-service before 98. The executor's instructions end with *"report and STOP"* at every point where the
-blast radius is about to grow.
+service before 98. The agent stops and re-grounds at every point where the blast radius is about to
+grow — *"establish the finding, then STOP before you patch."*
 
-**4. Verification runs in both directions.** The reasoner reviews the executor — and the executor
-corrects the reasoner. In our logs: the reasoner once diagnosed a fix as "algorithmically incomplete";
-the executor proved the fix was correct all along — it had simply never been deployed (a stale build).
-The reasoner also once prescribed a library parameter that didn't exist in the deployed version; the
-executor caught it and designed a version-safe equivalent. A pattern where correction only flows one
-way is theater.
+**4. Correction runs against the evidence, including your own conclusions.** The agent must be
+correctable by ground truth even when it contradicts the agent's own prior reasoning. In our logs: a
+fix was diagnosed as "algorithmically incomplete" — the live check proved it correct all along, it had
+simply never been deployed (a stale build). A prescribed library parameter turned out absent from the
+deployed version; the evidence forced a version-safe redesign. A pattern where a conclusion is never
+overturned by the evidence is theater — authority is not being right, it is refusing unverified claims,
+*your own most of all*.
 
 ## Who holds the pen: write-coherence
 
@@ -72,11 +85,11 @@ it — files and folders included.
 
 ```mermaid
 flowchart LR
-    D[Reasoner:\ndesign + spec] --> F[Framed prompt\nwith stop-points]
-    F --> E[Executor:\nbuild / deploy / test]
-    E --> R[Report]
-    R --> V{Reasoner:\nverify LIVE\nnot the report}
-    V -- defect found --> C[Review finding\nwritten to canon] --> F
+    D[Agent:\ndesign + spec] --> F[Framed task\nwith stop-points]
+    F --> E[Agent:\nbuild / deploy / test]
+    E --> R[Claim: done]
+    R --> V{Verify LIVE\nagainst canon\nnot the claim}
+    V -- defect found --> C[Finding\nwritten to canon] --> F
     V -- verified --> G{Blast radius\ngate}
     G -- pilot passes --> N[Next stage\nwider rollout]
     G -- human approval\nneeded --> H[Human decides]
@@ -92,12 +105,12 @@ Real sequence, condensed from our logs. Context: a fleet of ~98 telemetry proces
 (clients hanging silently on broker disruption — a real 54-minute outage). The fix had to be right
 before touching the fleet.
 
-| Round | Executor delivered | Independent verification found | Outcome |
+| Round | Delivered | Verifying live against canon found | Outcome |
 |---|---|---|---|
 | 1 | 3-layer resilience fix, chaos suite 11/11 green | the watchdog heartbeat ran on a timer *independent of the work* — a dead subscription would never trip it. **A green suite ≠ a working watchdog** | heartbeat re-gated on real work; decisive test added |
 | 2 | work-gated watchdog, systemd test passes | the new health probe was a **busy-loop** (a no-op await returning in µs, not 30s) — confirmed empirically; ×98 it would have *caused* the very broker storm it guarded against | real interruptible wait; probe/watchdog ratio made explicit |
 | 3 | pilot deployed | service stuck in `activating` forever: initial-connect retry looped without ever signaling readiness | two-phase connect (time-bounded attempts, then READY + background retry) |
-| 4 | — | **reversal:** the reasoner's prescribed fix used a parameter absent from the deployed library version; the executor caught it and shipped a version-safe design | version-independent fix, verified live |
+| 4 | — | **reversal:** a prescribed fix used a parameter absent from the deployed library version; the live check caught it and forced a version-safe design | version-independent fix, verified live |
 
 Four defects, all real, all caught **before** the fleet — each one found not by adding more agents,
 but by refusing to accept an unverified claim. The pilot then ran a 24-hour observation window before
@@ -107,10 +120,10 @@ any wider rollout.
 
 The swarm burns tokens on re-derivation and coordination. This pattern attacks both:
 
-- **Grounded state, not re-exploration** — the [State RAG](./README.md) puts reconciled ground truth
+- **Grounded state, not re-exploration** — the [state-canon](./README.md) puts reconciled ground truth
   in the agent's path (measured on a controlled corpus: a cold agent re-deriving state is always the
   most expensive condition; see [RESULTS](./corpus/microstack/RESULTS.md), including honest caveats).
-- **Model tiering** — the expensive model only reasons; the cheap model only executes.
+- **No re-derivation tax** — grounding replaces the swarm's per-agent context rebuild; one grounded agent pays it once.
 - **Compact machine-primary artifacts** — state, specs and handoffs are terse structured text, not prose.
 - **Verification by query, not by re-reading** — "is this still true?" is one `state_verify` call.
 

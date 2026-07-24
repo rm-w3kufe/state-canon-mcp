@@ -2,7 +2,7 @@
 the mechanics must not). Runs against a read-only SNAPSHOT of a production ops DB.
 
 The snapshot is NEVER committed to the repo. DB path via:
-  STATE_RAG_TEST_DB=/path/to/snapshot.db python3 tests/test_sqlite_ops.py
+  STATE_CANON_TEST_DB=/path/to/snapshot.db python3 tests/test_sqlite_ops.py
 (skips cleanly when unset — this test is for deployments that have such a canon.)
 """
 from __future__ import annotations
@@ -17,12 +17,12 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "instances"))
 
 import sqlite_ops  # noqa: E402
-from state_rag.digest import assemble  # noqa: E402
-from state_rag.server import StateRagServer  # noqa: E402
+from state_canon.digest import assemble  # noqa: E402
+from state_canon.server import StateRagServer  # noqa: E402
 
-DB = os.environ.get("STATE_RAG_TEST_DB")
+DB = os.environ.get("STATE_CANON_TEST_DB")
 if not DB or not Path(DB).exists():
-    print("SKIP: set STATE_RAG_TEST_DB to an ops-DB snapshot")
+    print("SKIP: set STATE_CANON_TEST_DB to an ops-DB snapshot")
     sys.exit(2)
 
 PASSED = 0

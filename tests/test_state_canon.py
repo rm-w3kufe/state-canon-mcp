@@ -1,10 +1,10 @@
-"""state-rag-mcp tests — no LLM, pure asserts against GROUND_TRUTH.
+"""state-canon tests — no LLM, pure asserts against GROUND_TRUTH.
 
 The contract: the 3 corpus drifts (declared_but_missing:cache, rule_violation:R1,
 orphan:debug-shell) must FALL OUT of the generic Reconciler diff + one rule.
 If they don't, the abstraction is wrong.
 
-Run:  python3 tests/test_state_rag.py   (from projects/state-rag-mcp/)
+Run:  python3 tests/test_state_canon.py   (from projects/state-canon/)
 """
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "instances"))
 
 import microstack  # noqa: E402
-from state_rag.digest import assemble  # noqa: E402
-from state_rag.server import StateRagServer  # noqa: E402
+from state_canon.digest import assemble  # noqa: E402
+from state_canon.server import StateRagServer  # noqa: E402
 
 CORPUS = ROOT / "corpus" / "microstack"
 PASSED = 0
@@ -73,7 +73,7 @@ def rpc(method: str, params: dict | None = None, req_id: int = 1) -> dict:
     return resp["result"]
 
 init = rpc("initialize")
-check("mcp.initialize", init["serverInfo"]["name"] == "state-rag-mcp")
+check("mcp.initialize", init["serverInfo"]["name"] == "state-canon")
 tools = {t["name"] for t in rpc("tools/list")["tools"]}
 check("mcp.tools", tools == {"state_onboard", "state_query", "state_verify", "state_reconcile"}, str(tools))
 out = rpc("tools/call", {"name": "state_reconcile", "arguments": {}})

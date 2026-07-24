@@ -1,45 +1,56 @@
-# State RAG MCP — grounded, verified, minimal
+# state-canon — verified ground truth for agents
 
-> **Two agents and an intelligent control system do more careful work than a swarm — and burn fewer tokens.**
-> A state-grounded RAG that puts *verified current state in the agent's path*, so it reasons from ground
-> truth instead of stale recall or costly re-derivation.
+> **An agent grounded in verified canon does more careful work than one running on recall — and burns fewer tokens.**
+> `state-canon` keeps a **canonical, reconciled record of the system** and puts it *in the agent's path*, so
+> the agent reasons from ground truth instead of stale memory or costly re-derivation. The retrieval (the
+> "RAG" part) is one access path; the thing itself is the **canon layer** — authoritative state you can
+> query, verify, and govern.
 
 **Status:** early / exploratory — the thesis and the method are battle-tested in daily use; the public
 tooling is being extracted and **the token-savings claim is being measured, not proclaimed**. Full status
 below. Stdlib-only, no dependencies. The method itself is a separate read: **[METHODOLOGY.md](./METHODOLOGY.md)**.
+
+> **Why "canon", not "RAG"?** A vector-RAG retrieves documents; this maintains the *authoritative version
+> of the world state* — written on every change, reconciled against reality, verifiable on demand. Calling
+> it a RAG undersells it (retrieval is ~20% of the design) and misnames it: `canon` is the load-bearing
+> word — the version with authority, the one recall must defer to.
 
 ---
 
 ## The bet
 
 The industry is racing toward multi-agent **swarms** on the premise that *more agents = better work*. We
-take the opposite bet: a **minimal** setup — two agents plus a state-grounded control system — produces more
-careful, more *verifiable* work at lower token cost.
+take the opposite bet: the bottleneck was never *how many agents* — it's **whether each decision is grounded
+in verified canon instead of the agent's own recall.** Fix that, and a **single agent** goes a long way, at
+lower token cost.
 
-- **A reasoning/architecture agent** (an advanced model) — designs, reviews, does root-cause analysis.
-- **An execution agent** (a regular model) — builds, deploys, runs.
+- **One agent**, grounded in canon — it designs, executes, and *verifies its own claims against ground
+  truth*, not against its memory of what it did.
 - **A human** — sets policy and holds the ceiling: irreversible / outward-facing changes need approval.
 
-Swarms burn tokens re-deriving context, coordinating, and duplicating. The bottleneck was never *how many
-agents* — it's **whether each decision is grounded and verified.** Fix that, and two agents go a long way.
-The full pattern — roles, boundaries, the real case study — is in **[METHODOLOGY.md](./METHODOLOGY.md)**.
+The audit property that matters — *what verifies a claim is not what produced it* — is preserved with one
+agent **because the canon is external to the agent's reasoning.** The agent doesn't check its work by
+re-reading its own recall; it reconciles against a canonical store that reality writes to. (Two agents were
+one way to get this — a reviewer checking an executor. The real invariant is grounding, not head-count.) The
+full pattern — the single-agent loop, boundaries, the real case study — is in **[METHODOLOGY.md](./METHODOLOGY.md)**.
 
-### Why it works — the control system
+### Why it works
 
 1. **Grounded, not re-derived.** The current, reconciled state of the system is injected into the agent's
    path. It doesn't re-explore the world each session; it reads verified ground truth. *This is what this
    tool provides.*
-2. **Verify at every boundary.** The reasoning agent never trusts the execution agent's *report* — it
-   checks the live state directly ("is the service actually running?", not "did you say it is?").
-3. **Right model for the right layer.** Expensive reasoning only where it pays; cheap execution everywhere
-   else. A cost/latency lever the swarm can't pull.
-4. **Compact, machine-primary artifacts.** State and handoffs are terse and structured, not prose.
+2. **Verify against canon, not recall.** The agent never trusts a *report* — its own or anyone's — over the
+   live state ("is the service actually running?", not "did I say it is?"). Canon is the authority; recall
+   is a lead to check.
+3. **Compact, machine-primary artifacts.** State and handoffs are terse and structured, not prose — the
+   token-cost lever.
 
-## What it is — a state-grounded RAG, as an MCP
+## What it is — a canon layer, exposed over MCP
 
-Not a vector-RAG over documents. A **state RAG**: a canonical store written on every change, a **reconciler**
-that keeps it ≡ reality (drift/orphan detection), and an *onboard* step that injects the current state into
-the model's context. The discipline: **recall is not canon — verify against state.**
+A **canonical store** written on every change, a **reconciler** that keeps it ≡ reality (drift / orphan
+detection), and an *onboard* step that injects the current state into the model's context. Retrieval is one
+access path over it — hence "accessed *like* a RAG" — but the substance is the canon and its reconciliation.
+The discipline in one line: **recall is not canon — verify against state.**
 
 Exposed over the Model Context Protocol so *any* agent can plug in:
 
@@ -58,7 +69,7 @@ session start); **tools** feed the lazy path (query only what you need).
 a `Reconciler` (how to observe reality for each domain). Full abstraction, reference instances, the Git/VCS
 instance, remote mode, and composing with other context sources: **[INTERFACE.md](./INTERFACE.md)**.
 
-**It composes.** State RAG is one instrument, not the whole rack: attach it over MCP side-by-side with your
+**It composes.** state-canon is one instrument, not the whole rack: attach it over MCP side-by-side with your
 content RAG, your memory server, your other tools. The discipline that keeps the ensemble honest is
 **authority ordering** — for *current* truth, reconciled state outranks memory and documents.
 
@@ -67,17 +78,17 @@ content RAG, your memory server, your other tools. The discipline that keeps the
 **Requirements:** Python **3.10+**. Nothing else — the server is stdlib-only, there is no `pip install`.
 
 ```bash
-git clone <this-repo> state-rag-mcp
-python3 state-rag-mcp/tests/test_state_rag.py   # optional: 22 checks, ~1s
+git clone <this-repo> state-canon
+python3 state-canon/tests/test_state_canon.py   # optional: 22 checks, ~1s
 ```
 
 The server is one command (stdio; your MCP client spawns it):
 
 ```bash
-python3 /abs/path/state-rag-mcp/mcp_server.py --state      /abs/path/your-state.json
-python3 /abs/path/state-rag-mcp/mcp_server.py --sqlite     /abs/path/your-state.db     # any SQLite DB
-python3 /abs/path/state-rag-mcp/mcp_server.py --git        /abs/path/your-repo         # a git working tree
-python3 /abs/path/state-rag-mcp/mcp_server.py --microstack /abs/path/state-rag-mcp/corpus/microstack  # demo
+python3 /abs/path/state-canon/mcp_server.py --state      /abs/path/your-state.json
+python3 /abs/path/state-canon/mcp_server.py --sqlite     /abs/path/your-state.db     # any SQLite DB
+python3 /abs/path/state-canon/mcp_server.py --git        /abs/path/your-repo         # a git working tree
+python3 /abs/path/state-canon/mcp_server.py --microstack /abs/path/state-canon/corpus/microstack  # demo
 ```
 
 > **Architecture note:** the server runs **locally, beside your agent** (stdio). Your state lives where
@@ -91,20 +102,20 @@ Use **absolute paths** everywhere.
 
 **Claude Code (CLI):**
 ```bash
-claude mcp add state-rag -- python3 /abs/path/state-rag-mcp/mcp_server.py --state /abs/path/state.json
+claude mcp add state-canon -- python3 /abs/path/state-canon/mcp_server.py --state /abs/path/state.json
 ```
 or per-project in `.mcp.json` / **Claude Desktop** in `claude_desktop_config.json`:
 ```json
-{ "mcpServers": { "state-rag": {
+{ "mcpServers": { "state-canon": {
     "command": "python3",
-    "args": ["/abs/path/state-rag-mcp/mcp_server.py", "--state", "/abs/path/state.json"] } } }
+    "args": ["/abs/path/state-canon/mcp_server.py", "--state", "/abs/path/state.json"] } } }
 ```
 
 **OpenCode** (`opencode.json`, 0.x shape):
 ```json
-{ "mcp": { "state-rag": {
+{ "mcp": { "state-canon": {
     "type": "local",
-    "command": ["python3", "/abs/path/state-rag-mcp/mcp_server.py", "--state", "/abs/path/state.json"] } } }
+    "command": ["python3", "/abs/path/state-canon/mcp_server.py", "--state", "/abs/path/state.json"] } } }
 ```
 
 **Cursor** (`.cursor/mcp.json`), **Cline** (`cline_mcp_settings.json`), **Windsurf**
@@ -114,10 +125,10 @@ or per-project in `.mcp.json` / **Claude Desktop** in `claude_desktop_config.jso
 
 ```bash
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
-  | python3 /abs/path/state-rag-mcp/mcp_server.py --microstack /abs/path/state-rag-mcp/corpus/microstack
+  | python3 /abs/path/state-canon/mcp_server.py --microstack /abs/path/state-canon/corpus/microstack
 ```
 
-You should see one JSON line with `"serverInfo": {"name": "state-rag-mcp"}`.
+You should see one JSON line with `"serverInfo": {"name": "state-canon"}`.
 
 ## Quickstart — the 60-second demo
 
@@ -126,7 +137,7 @@ declared active but actually stopped, a rule violation, and an orphan process.
 
 **1. Ask for the whole picture:**
 ```bash
-cd state-rag-mcp
+cd state-canon
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state_onboard","arguments":{}}}' \
   | python3 mcp_server.py --microstack corpus/microstack
 ```
@@ -167,7 +178,7 @@ python3 mcp_server.py --state /abs/path/my-state.json
 **SQLite.** Every table/view becomes a queryable domain automatically — or pass an explicit mapping (see
 `instances/sqlite_ops.py` for a real production example). Opened read-only by construction (`mode=ro`):
 ```python
-from state_rag.sqlite_provider import SqliteStateProvider
+from state_canon.sqlite_provider import SqliteStateProvider
 provider = SqliteStateProvider("ops.db",
     domains={"services": "services", "blockers": "v_open_blockers"},
     meta={"system": "my-stack"})
@@ -178,7 +189,7 @@ provider = SqliteStateProvider("ops.db",
 **An API / anything.** Implement two methods (this **is** remote mode — the server stays local, the
 provider crosses the wire; an SSH-channel provider is the same shape):
 ```python
-from state_rag.provider import StateProvider
+from state_canon.provider import StateProvider
 import json, urllib.request
 
 class ApiStateProvider(StateProvider):
@@ -207,7 +218,7 @@ DIGEST_POLICY = {
 
 This is where the RAG earns its keep: **declared vs observed → typed drift**, computed live.
 ```python
-from state_rag.reconcile import Reconciler
+from state_canon.reconcile import Reconciler
 
 class MyReconciler(Reconciler):
     domain = "services"
@@ -269,14 +280,14 @@ documentation (the pattern we run daily), not orchestration code — nothing her
 ## Repository layout
 
 ```
-state-rag-mcp/
+state-canon/
 ├── README.md            ← this file (what it is · install · usage · status)
 ├── METHODOLOGY.md       ← the two-agent pattern (the method behind the tool)
 ├── INTERFACE.md         ← extending & integrating (abstraction · git · remote · composition)
 ├── skills/              ← the disciplines as portable skills (9 · installable in Claude Code)
 ├── agents/              ← the two roles as adoptable agent specs (reasoner · executor)
 ├── mcp_server.py        ← one-file launcher for any MCP client
-├── state_rag/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · server
+├── state_canon/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · server
 ├── instances/           ← reference instances (microstack demo · a real SQLite canon · git)
 └── corpus/microstack/   ← controlled measurement corpus
     ├── raw/             ← what a COLD agent faces (must synthesize)

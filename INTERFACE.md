@@ -1,4 +1,4 @@
-# State RAG MCP — extending & integrating
+# state-canon MCP — extending & integrating
 
 The tool/resource surface — `state_onboard` · `state_query` · `state_verify` · `state_reconcile`, plus the
 `state://…` resources — is documented in the **[README](./README.md#what-it-is--a-state-grounded-rag-as-an-mcp)**.
@@ -73,14 +73,14 @@ a missing feature.
 
 ## Composing with other context artifacts (content RAG, memory, tools)
 
-State RAG is deliberately **one instrument, not the whole rack**. The connection point already
-exists and is the protocol itself: MCP clients attach servers side-by-side, so State RAG composes
+state-canon is deliberately **one instrument, not the whole rack**. The connection point already
+exists and is the protocol itself: MCP clients attach servers side-by-side, so state-canon composes
 with a content/vector RAG, a memory server, and any other tool without either knowing about the other.
 What each source is *for* — and who wins when they disagree — is the part worth making explicit:
 
 | source | answers | authoritative for |
 |---|---|---|
-| **State RAG** (this) | "what IS, right now" | current system truth (reconciled) |
+| **state-canon** (this) | "what IS, right now" | current system truth (reconciled) |
 | content / vector RAG | "what do we know about X" | knowledge, documents, how-tos |
 | memory server | "what happened, what did we learn" | history, preferences, decisions past |
 | other tools | "do X" | actuation — not context |

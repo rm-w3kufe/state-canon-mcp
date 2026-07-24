@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from state_rag.provider import JsonStateProvider
-from state_rag.reconcile import Drift, Reconciler
+from state_canon.provider import JsonStateProvider
+from state_canon.reconcile import Drift, Reconciler
 
 
 def parse_manifest(path: Path) -> list[dict]:

@@ -5,11 +5,11 @@ Exposes the state-RAG surface (INTERFACE.md):
   resources: state://digest · state://schema · state://rules · state://handoff
 
 Run:
-  python3 -m state_rag.server --state path/to/state.json
-  python3 -m state_rag.server --sqlite path/to/ops.db
-  python3 -m state_rag.server --git path/to/repo
-  python3 -m state_rag.server --microstack path/to/corpus/microstack
-  python3 -m state_rag.server --instance path/to/my_instance.py:ARG   # bring your own
+  python3 -m state_canon.server --state path/to/state.json
+  python3 -m state_canon.server --sqlite path/to/ops.db
+  python3 -m state_canon.server --git path/to/repo
+  python3 -m state_canon.server --microstack path/to/corpus/microstack
+  python3 -m state_canon.server --instance path/to/my_instance.py:ARG   # bring your own
 """
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ class StateRagServer:
         if method == "initialize":
             return {"protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "state-rag-mcp", "version": "0.1.0"}}
+                    "serverInfo": {"name": "state-canon", "version": "0.1.0"}}
         if method == "ping":
             return {}
         if method == "tools/list":

@@ -1,7 +1,7 @@
 """GitStateProvider tests — self-contained: builds a scratch repo, seeds the three
 drift kinds, asserts they fall out of the reconciler. Skips cleanly if git is absent.
 
-Run:  python3 tests/test_git_provider.py   (from projects/state-rag-mcp/)
+Run:  python3 tests/test_git_provider.py   (from projects/state-canon/)
 """
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ if shutil.which("git") is None:
     print("SKIP: git not installed")
     sys.exit(2)
 
-from state_rag.digest import assemble  # noqa: E402
-from state_rag.git_provider import DIGEST_POLICY, _git, load  # noqa: E402
-from state_rag.server import StateRagServer  # noqa: E402
+from state_canon.digest import assemble  # noqa: E402
+from state_canon.git_provider import DIGEST_POLICY, _git, load  # noqa: E402
+from state_canon.server import StateRagServer  # noqa: E402
 
 PASSED = 0
 
