@@ -1,4 +1,4 @@
-"""StateProvider — the pluggable canonical-state interface (the RAG's ground truth).
+"""StateProvider — the pluggable canonical-state interface (the canon's ground truth).
 
 The core is domain-agnostic: implement StateProvider over YOUR store (SQLite, JSON,
 an API — anything). JsonStateProvider is the reference implementation, usable over

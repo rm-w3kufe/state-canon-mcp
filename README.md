@@ -216,7 +216,7 @@ DIGEST_POLICY = {
 
 ### Step 3 (optional but recommended) — add a reconciler
 
-This is where the RAG earns its keep: **declared vs observed → typed drift**, computed live.
+This is where canon earns its keep: **declared vs observed → typed drift**, computed live.
 ```python
 from state_canon.reconcile import Reconciler
 
@@ -260,7 +260,7 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Second living instance (SQLite over a real production canon) | ✅ 14/14 structural checks; digest policy born from a real 44k→12k lesson |
 | Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
-| Skills (9) + agent specs (2) | ✅ the disciplines and the two roles, installable |
+| Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |
 
@@ -269,12 +269,12 @@ documentation (the pattern we run daily), not orchestration code — nothing her
 
 ## Going deeper
 
-- **[METHODOLOGY.md](./METHODOLOGY.md)** — the two-agent pattern: roles, the four boundaries where quality
+- **[METHODOLOGY.md](./METHODOLOGY.md)** — the canon-grounded agent: roles, the four boundaries where quality
   is made, the real four-round case study, and the honest limits.
 - **[INTERFACE.md](./INTERFACE.md)** — extending & integrating: the provider abstraction, reference
   instances, the Git/VCS instance, remote mode, and composing with other context sources.
 - **[skills/](./skills/)** — the nine disciplines as portable, installable skills (each with its scar).
-- **[agents/](./agents/)** — the two roles (`reasoner` · `executor`) as adoptable agent specs.
+- **[agents/](./agents/)** — the agent as an adoptable spec (`agent.md`).
 - **[corpus/microstack/](./corpus/microstack/)** — the measurement corpus, experiment design, and results.
 
 ## Repository layout
@@ -282,16 +282,16 @@ documentation (the pattern we run daily), not orchestration code — nothing her
 ```
 state-canon/
 ├── README.md            ← this file (what it is · install · usage · status)
-├── METHODOLOGY.md       ← the two-agent pattern (the method behind the tool)
+├── METHODOLOGY.md       ← the canon-grounded agent (the method behind the tool)
 ├── INTERFACE.md         ← extending & integrating (abstraction · git · remote · composition)
 ├── skills/              ← the disciplines as portable skills (9 · installable in Claude Code)
-├── agents/              ← the two roles as adoptable agent specs (reasoner · executor)
+├── agents/              ← the agent as an adoptable spec
 ├── mcp_server.py        ← one-file launcher for any MCP client
 ├── state_canon/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · server
 ├── instances/           ← reference instances (microstack demo · a real SQLite canon · git)
 └── corpus/microstack/   ← controlled measurement corpus
     ├── raw/             ← what a COLD agent faces (must synthesize)
-    ├── synthesized/     ← the reconciled state (the RAG's product)
+    ├── synthesized/     ← the reconciled state (the canon's product)
     ├── EXPERIMENT.md · RESULTS.md · GROUND_TRUTH.md · TASKS.md
 ```
 

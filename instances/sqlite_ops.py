@@ -8,7 +8,7 @@ Read-only by construction (mode=ro). Reconciler note (honest): in this
 deployment the live model≡reality machinery already runs host-side on timers,
 and its OUTPUT is the database itself — so this instance exposes reconciled
 state rather than recomputing it. A live Reconciler here would need remote
-observation; that belongs to the host machinery, not the RAG.
+observation; that belongs to the host machinery, not the canon layer.
 
 Use it as a template: rename the domains to your tables, tune the policy.
 Run:  python3 mcp_server.py --instance instances/sqlite_ops.py:/path/to/ops.db

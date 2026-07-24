@@ -84,15 +84,16 @@ it — files and folders included.
 ## The loop
 
 ```mermaid
-flowchart LR
-    D[Agent:\ndesign + spec] --> F[Framed task\nwith stop-points]
-    F --> E[Agent:\nbuild / deploy / test]
-    E --> R[Claim: done]
-    R --> V{Verify LIVE\nagainst canon\nnot the claim}
-    V -- defect found --> C[Finding\nwritten to canon] --> F
-    V -- verified --> G{Blast radius\ngate}
-    G -- pilot passes --> N[Next stage\nwider rollout]
-    G -- human approval\nneeded --> H[Human decides]
+flowchart TD
+    D["Agent:<br/>design + spec"] --> F["Framed task<br/>with stop-points"]
+    F --> E["Agent:<br/>build / deploy / test"]
+    E --> R["Claim: done"]
+    R --> V{"Verify LIVE<br/>against canon<br/>not the claim"}
+    V -- defect found --> C["Finding<br/>written to canon"]
+    C --> F
+    V -- verified --> G{"Blast radius<br/>gate"}
+    G -- pilot passes --> N["Next stage<br/>wider rollout"]
+    G -- human approval needed --> H["Human decides"]
 ```
 
 Two properties matter. The loop **converges** — each round either verifies or produces a written

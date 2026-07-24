@@ -1,6 +1,6 @@
 # skills/ — the disciplines, portable
 
-Nine working disciplines from the [two-agent pattern](../METHODOLOGY.md), packaged as portable
+Nine working disciplines from the [canon-grounded agent pattern](../METHODOLOGY.md), packaged as portable
 skills. Each one exists because something real broke without it — every skill carries its scar.
 
 **Format:** one directory per skill, `SKILL.md` with YAML frontmatter (`name`, `description`) +

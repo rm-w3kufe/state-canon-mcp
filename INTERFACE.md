@@ -1,7 +1,7 @@
 # state-canon MCP — extending & integrating
 
 The tool/resource surface — `state_onboard` · `state_query` · `state_verify` · `state_reconcile`, plus the
-`state://…` resources — is documented in the **[README](./README.md#what-it-is--a-state-grounded-rag-as-an-mcp)**.
+`state://…` resources — is documented in the **[README](./README.md#what-it-is--a-canon-layer-exposed-over-mcp)**.
 This document is the deeper reference: **extending** the tool (plugging in your own state) and **integrating**
 it alongside other context sources.
 

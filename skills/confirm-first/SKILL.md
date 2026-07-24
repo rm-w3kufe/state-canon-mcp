@@ -1,6 +1,6 @@
 ---
 name: confirm-first
-description: Use when handing a defect or incident to an executor, or when tempted to patch on hypothesis. Structure the work as diagnosis-first with an explicit STOP before any fix is implemented.
+description: Use when triaging a defect or incident, or when tempted to patch on hypothesis. Structure the work as diagnosis-first with an explicit STOP before any fix is implemented.
 ---
 
 # Confirm first
@@ -13,7 +13,7 @@ confirmed is the one that fired.
 ## How
 1. Phase 0 is **read-only**: reproduce the failure, narrow to the exact mechanism, gather evidence
    (logs, kernel state, a failing input). No code changes in this phase.
-2. The executor reports findings and **stops**. The instruction literally ends with "report and
+2. The agent reports findings and **stops**. The instruction literally ends with "report and
    STOP — do not patch yet."
 3. The reviewer confirms the mechanism (or sends phase 0 back), then the fix is designed against
    the *confirmed* mechanism only.

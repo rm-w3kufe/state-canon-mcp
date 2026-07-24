@@ -1,5 +1,5 @@
 """SqliteStateProvider — generic provider over any SQLite store. READ-ONLY by
-construction (URI mode=ro): the RAG reads canon, it never writes it.
+construction (URI mode=ro): state-canon reads, it never writes.
 
 Domains map to tables/views via an explicit mapping; default = every table/view.
 Identifier safety: table names come from the trusted constructor mapping; filter

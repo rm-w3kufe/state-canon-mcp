@@ -1,6 +1,6 @@
 """Minimal MCP server (stdio, JSON-RPC 2.0, newline-delimited). Stdlib only.
 
-Exposes the state-RAG surface (INTERFACE.md):
+Exposes the state-canon surface (INTERFACE.md):
   tools:     state_onboard · state_query · state_verify · state_reconcile
   resources: state://digest · state://schema · state://rules · state://handoff
 
