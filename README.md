@@ -1,19 +1,14 @@
 # state-canon — verified ground truth for agents
 
 > **An agent grounded in verified canon does more careful work than one running on recall — and burns fewer tokens.**
-> `state-canon` keeps a **canonical, reconciled record of the system** and puts it *in the agent's path*, so
-> the agent reasons from ground truth instead of stale memory or costly re-derivation. The retrieval (the
-> "RAG" part) is one access path; the thing itself is the **canon layer** — authoritative state you can
+> `state-canon` keeps a **canonical, reconciled record of the system** — the authoritative version of the
+> world state, written on every change and reconciled against reality — and puts it *in the agent's path*,
+> so the agent reasons from ground truth instead of stale memory or costly re-derivation. State you can
 > query, verify, and govern.
 
 **Status:** early / exploratory — the thesis and the method are battle-tested in daily use; the public
 tooling is being extracted and **the token-savings claim is being measured, not proclaimed**. Full status
 below. Stdlib-only, no dependencies. The method itself is a separate read: **[METHODOLOGY.md](./METHODOLOGY.md)**.
-
-> **Why "canon", not "RAG"?** A vector-RAG retrieves documents; this maintains the *authoritative version
-> of the world state* — written on every change, reconciled against reality, verifiable on demand. Calling
-> it a RAG undersells it (retrieval is ~20% of the design) and misnames it: `canon` is the load-bearing
-> word — the version with authority, the one recall must defer to.
 
 ---
 
@@ -28,10 +23,9 @@ lower token cost.
   truth*, not against its memory of what it did.
 - **A human** — sets policy and holds the ceiling: irreversible / outward-facing changes need approval.
 
-The audit property that matters — *what verifies a claim is not what produced it* — is preserved with one
+The audit property that matters — *what verifies a claim is not what produced it* — holds with one
 agent **because the canon is external to the agent's reasoning.** The agent doesn't check its work by
-re-reading its own recall; it reconciles against a canonical store that reality writes to. (Two agents were
-one way to get this — a reviewer checking an executor. The real invariant is grounding, not head-count.) The
+re-reading its own recall; it reconciles against a canonical store that reality writes to. The
 full pattern — the single-agent loop, boundaries, the real case study — is in **[METHODOLOGY.md](./METHODOLOGY.md)**.
 
 ```mermaid
@@ -61,8 +55,8 @@ flowchart LR
 ## What it is — a canon layer, exposed over MCP
 
 A **canonical store** written on every change, a **reconciler** that keeps it ≡ reality (drift / orphan
-detection), and an *onboard* step that injects the current state into the model's context. Retrieval is one
-access path over it — hence "accessed *like* a RAG" — but the substance is the canon and its reconciliation.
+detection), and an *onboard* step that injects the current state into the model's context. The agent
+queries it or has the digest front-loaded — either way it reads reconciled ground truth, not its own recall.
 The discipline in one line: **recall is not canon — verify against state.**
 
 Exposed over the Model Context Protocol so *any* agent can plug in:

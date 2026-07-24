@@ -19,12 +19,11 @@ it is between **acting and verifying that action against canon**. The agent does
 the second collapse into "I remember doing it." Canon is external to its reasoning; that externality is
 what keeps the verification honest.
 
-> **Why one agent, not two.** Earlier versions of this pattern used two — a reasoner reviewing an
-> executor — to guarantee that *what verifies a claim is not what produced it*. That guarantee does not
-> require a second agent; it requires verification against **canon external to the agent's reasoning**.
-> One agent that reads the artifact's hash instead of trusting its memory of the deploy has the same
-> property at lower cost. (Two agents remain a valid scaling — a reviewer + an executor — and the case
-> study below happened to run that way. The invariant is grounding, not the number of agents.)
+> **What guarantees the audit property.** That *what verifies a claim is not what produced it* does not
+> require a second agent — it requires verification against **canon external to the agent's reasoning**.
+> One agent that reads the artifact's hash instead of trusting its memory of the deploy has the guarantee
+> on its own, at lower cost. (More agents remain a valid scaling — a reviewer plus an executor — where the
+> coordination is worth it; the invariant is grounding, not the number of agents.)
 
 ## Where quality is actually made: the boundaries
 

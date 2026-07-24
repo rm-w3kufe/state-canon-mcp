@@ -26,9 +26,7 @@ human ──decisions / approval──► agent ──acts──► reality
                            not its own report of what it did)
 ```
 
-**Why one agent, not two.** An earlier version of this pattern used two agents — a reasoner checking
-an executor — to get the property that *what verifies a claim is not what produced it*. But that
-property does not require a second agent; it requires that verification run against **canon that is
-external to the agent's reasoning.** One agent that reconciles against ground truth — reading the
-artifact's hash rather than trusting its memory of the deploy — has the same guarantee at lower cost.
-The invariant was never head-count; it was grounding.
+**What guarantees quality.** The property that *what verifies a claim is not what produced it* does not
+require a second agent; it requires that verification run against **canon that is external to the agent's
+reasoning.** One agent that reconciles against ground truth — reading the artifact's hash rather than
+trusting its memory of the deploy — has that guarantee. The invariant is grounding, not head-count.
