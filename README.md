@@ -78,7 +78,7 @@ content RAG, your memory server, your other tools. The discipline that keeps the
 **Requirements:** Python **3.10+**. Nothing else — the server is stdlib-only, there is no `pip install`.
 
 ```bash
-git clone <this-repo> state-canon
+git clone https://github.com/rm-w3kufe/state-canon-mcp.git state-canon
 python3 state-canon/tests/test_state_canon.py   # optional: 22 checks, ~1s
 ```
 
