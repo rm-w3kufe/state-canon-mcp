@@ -34,6 +34,15 @@ re-reading its own recall; it reconciles against a canonical store that reality 
 one way to get this — a reviewer checking an executor. The real invariant is grounding, not head-count.) The
 full pattern — the single-agent loop, boundaries, the real case study — is in **[METHODOLOGY.md](./METHODOLOGY.md)**.
 
+```mermaid
+flowchart LR
+    K[("canon<br/>verified state")] -->|onboard| A["agent<br/>design · execute"]
+    A -->|"claim: done"| V{"verify LIVE<br/>vs canon,<br/>not the report"}
+    V -->|verified| K
+    V -->|defect found| A
+    H["human<br/>policy + approval"] -.->|gates the irreversible| A
+```
+
 ### Why it works
 
 1. **Grounded, not re-derived.** The current, reconciled state of the system is injected into the agent's
