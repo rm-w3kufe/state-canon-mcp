@@ -183,7 +183,7 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"s
 → `"holds": false` **with evidence**: declared `active`, observed `stopped`. That is the whole philosophy in
 one call: *don't trust the report — verify against state.*
 
-**4. Combined demo — full agent canon with session journaling, per-ref focus tracking, and a VSM task provider:**
+**3. Combined demo — full agent canon with session journaling, per-ref focus tracking, and a VSM task provider:**
 ```bash
 python3 /abs/path/state-canon/mcp_server.py \
   --instance /abs/path/instances/tasks_provider.py:/abs/path/your-TASKS.vsm \
@@ -195,7 +195,7 @@ reconcilers), `state_journal_*` (snapshot/diff/history), and
 `state_focus_mark`/`state_focus_close` (per-agent focus tracking) — the full
 canon loop with no external dependencies.
 
-**3. With your agent attached**, ask it:
+**4. With your agent attached**, ask it:
 - *"What's the current state of the system? Any drift?"* → it calls `state_onboard` once.
 - *"Is the cache service consistent with what's declared?"* → it calls `state_query` / `state_verify`.
 
