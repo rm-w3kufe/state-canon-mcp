@@ -38,7 +38,7 @@ from state_canon.freshness import FreshnessReconciler
 def load(path: str):
     """Your instance's load() — tasks_provider, sqlite_ops, or any other."""
 
-    provider, base_reconcilers = _your_existing_loader(path)
+    provider, base_reconcilers = _existing_loader(path)
 
     reconcilers = [
         *base_reconcilers,
@@ -49,7 +49,7 @@ def load(path: str):
             label="VSF state DB",           # cosmetic label in drift message
         ),
     ]
-    return provider, reconcilers, getattr(mod, "DIGEST_POLICY", None)
+    return provider, reconcilers
 ```
 
 When the server runs, `state_reconcile` includes the freshness domain: no drift if the file is current,
