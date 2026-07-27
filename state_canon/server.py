@@ -11,7 +11,8 @@ Run:
   python3 -m state_canon.server --git path/to/repo
   python3 -m state_canon.server --microstack path/to/corpus/microstack
   python3 -m state_canon.server --instance path/to/my_instance.py:ARG   # bring your own
-  # add --journal path/to/journal.db to any of the above to enable state_journal_*
+   # add --journal path/to/journal.db to any of the above to enable state_journal_*
+   # add --focus path/to/focus.json to any of the above to enable state_focus_* + state_query('focus')
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import sys
 from typing import Any
 
 from .digest import assemble
+from .focus import FocusTracker
 from .journal import StateJournal
 from .provider import JsonStateProvider, StateProvider
 from .reconcile import Reconciler
@@ -72,6 +74,21 @@ TOOLS = [
      "description": "CHEAP (~80 tok): show recent journal snapshots.",
      "inputSchema": {"type": "object",
                      "properties": {"limit": {"type": "integer", "description": "max entries (default 10)"}}}},
+    {"name": "state_focus_mark",
+     "description": "Upsert a focus entry by ref. Creates if new, updates status/note if existing. "
+                    "Requires --focus PATH at server start.",
+     "inputSchema": {"type": "object",
+                     "properties": {"ref": {"type": "string", "description": "focus entry identifier"},
+                                    "status": {"type": "string",
+                                               "description": "optional: active | paused | done (default: active)"},
+                                    "note": {"type": "string", "description": "optional context note"}},
+                     "required": ["ref"]}},
+    {"name": "state_focus_close",
+     "description": "Close (mark done) a focus entry by ref. Requires --focus PATH at server start.",
+     "inputSchema": {"type": "object",
+                     "properties": {"ref": {"type": "string", "description": "focus entry identifier"},
+                                    "note": {"type": "string", "description": "optional closing note"}},
+                     "required": ["ref"]}},
 ]
 
 RESOURCES = [
@@ -84,17 +101,23 @@ RESOURCES = [
 
 class StateRagServer:
     def __init__(self, provider: StateProvider, reconcilers: list[Reconciler] | None = None,
-                 digest_policy: dict | None = None, journal_db: str | None = None):
+                 digest_policy: dict | None = None, journal_db: str | None = None,
+                 focus_file: str | None = None):
         self.provider = provider
         self.reconcilers = reconcilers or []
         self.digest_policy = digest_policy
         self.journal = StateJournal(journal_db) if journal_db else None
+        self.focus = FocusTracker(focus_file) if focus_file else None
 
     # ── tool implementations ──
     def state_onboard(self) -> str:
         return assemble(self.provider, self.reconcilers, policy=self.digest_policy)
 
     def state_query(self, domain: str, filter: dict | None = None) -> list[dict]:
+        if domain == "focus":
+            if not self.focus:
+                return [{"error": "focus not enabled (start server with --focus)"}]
+            return self.focus.query((filter or {}).get("ref"))
         return self.provider.query(domain, filter)
 
     def state_verify(self, domain: str, expect: dict, filter: dict | None = None) -> dict:
@@ -174,6 +197,10 @@ class StateRagServer:
             return self._journal_diff(args.get("from_id"), args.get("to_id"))
         if name == "state_journal_history":
             return self._journal_history(args.get("limit", 10))
+        if name == "state_focus_mark":
+            return self._focus_mark(args["ref"], args.get("status"), args.get("note"))
+        if name == "state_focus_close":
+            return self._focus_close(args["ref"], args.get("note"))
         raise ValueError(f"unknown tool: {name}")
 
     # ── journal tools ──
@@ -208,6 +235,21 @@ class StateRagServer:
             "session": r["session_id"] or "-",
             "at": r["created_at"],
         } for r in h]
+
+    # ── focus tools ──
+
+    def _focus_mark(self, ref: str, status: str | None = None,
+                    note: str | None = None) -> dict:
+        if not self.focus:
+            return {"error": "focus not enabled (start server with --focus)"}
+        entry = self.focus.mark(ref, status=status, note=note)
+        return {"ref": entry["ref"], "status": entry["status"], "updated_at": entry["updated_at"]}
+
+    def _focus_close(self, ref: str, note: str | None = None) -> dict:
+        if not self.focus:
+            return {"error": "focus not enabled (start server with --focus)"}
+        entry = self.focus.close(ref, note=note)
+        return {"ref": entry["ref"], "status": entry["status"], "updated_at": entry["updated_at"]}
 
     # ── stdio loop ──
     def serve(self) -> None:
@@ -251,6 +293,9 @@ def main() -> None:
                     help="bring your own instance: a module exposing load(arg) [+ DIGEST_POLICY]")
     ap.add_argument("--journal", metavar="PATH",
                     help="enable state_journal_* tools, persisting snapshots to PATH (SQLite DB)")
+    ap.add_argument("--focus", metavar="PATH",
+                    help="enable state_focus_* tools + state_query('focus'), "
+                         "persisting per-agent focus entries to PATH (JSON)")
     args = ap.parse_args()
 
     if args.instance:
@@ -271,7 +316,7 @@ def main() -> None:
     else:
         ap.error("need one of --state, --sqlite, --git, --microstack, --instance")
 
-    StateRagServer(provider, reconcilers, policy, journal_db=args.journal).serve()
+    StateRagServer(provider, reconcilers, policy, journal_db=args.journal, focus_file=args.focus).serve()
 
 
 if __name__ == "__main__":

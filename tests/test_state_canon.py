@@ -76,7 +76,8 @@ init = rpc("initialize")
 check("mcp.initialize", init["serverInfo"]["name"] == "state-canon")
 tools = {t["name"] for t in rpc("tools/list")["tools"]}
 check("mcp.tools", tools == {"state_onboard", "state_query", "state_verify", "state_reconcile",
-                              "state_journal_mark", "state_journal_diff", "state_journal_history"}, str(tools))
+                              "state_journal_mark", "state_journal_diff", "state_journal_history",
+                              "state_focus_mark", "state_focus_close"}, str(tools))
 out = rpc("tools/call", {"name": "state_reconcile", "arguments": {}})
 live = json.loads(out["content"][0]["text"])
 check("mcp.reconcile-live", len(live) == 3 and {d["kind"] for d in live}
