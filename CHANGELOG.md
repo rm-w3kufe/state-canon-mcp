@@ -5,6 +5,17 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.6.0] — 2026-07-27
+
+### Added
+- `FocusTaskReconciler` — flags focus entries whose status says active/paused
+  but whose referenced task is done or resolved. Two drift kinds:
+  `stale_focus_task_done` (task's own status is closed-like) and
+  `stale_focus_session_resolved` (task ref appears in session's `resolved:[]`
+  list). Domain `focus`, coexists with `TaskSessionReconciler` (domain `tasks`).
+- Wired into `instances/tasks_provider.py`'s `load()` — both reconcilers are
+  returned automatically.
+
 ## [0.5.0] — 2026-07-27
 
 ### Added

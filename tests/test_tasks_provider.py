@@ -1,5 +1,7 @@
 """Tests for the VSM task-file provider (instances/tasks_provider.py).
 
+Covers: parser, TaskSessionReconciler, focus loading, FocusTaskReconciler.
+
 stdlib-only — no pytest dependency. Run:
     python3 tests/test_tasks_provider.py   (from state-canon-mcp/)
 """
@@ -297,6 +299,158 @@ check("focus.load_by_vsm_path", "tasks" in provider.list_domains(),
       str(provider.list_domains()))
 
 del provider, reconcilers
+
+# ── FocusTaskReconciler fixtures ──────────────────────────────────────
+
+FIXTURE_VSM_FOCUS = """@vsm 1.0
+// Focus reconciler fixture — tasks with various statuses
+
+task("DONE-TASK", priority=P1, agent=ds, status=done) = {
+  what: "task is closed, focus should not track it as active",
+}
+
+task("OPEN-TASK", priority=P2, agent=ds, status=open) = {
+  what: "still in progress, focus is correct",
+}
+
+task("SESSION-RESOLVED-TASK", priority=P1, agent=ds, status=open) = {
+  what: "status says open but resolved in session",
+}
+
+task("COMPLETED-TASK", priority=P3, agent=ds, status=completed) = {
+  what: "task is completed, focus should not track it",
+}
+
+task("UNTRACKED-OPEN-TASK", priority=P3, agent=ds, status=open) = {
+  what: "never in focus, should not appear in drifts",
+}
+
+session("2026-07-25") = {
+  summary: "resolves SESSION-RESOLVED-TASK",
+  result:  pass,
+  resolved: [
+    "SESSION-RESOLVED-TASK — done via session",
+  ],
+}
+"""
+
+FIXTURE_VSM_ZERO_DRIFT = """@vsm 1.0
+// Zero-drift fixture — focus matches reality
+
+task("CURRENT-TASK", priority=P1, agent=ds, status=open) = {
+  what: "actively working on this",
+}
+
+session("2026-07-20") = {
+  summary: "nothing resolved here",
+  result:  pass,
+  resolved: [],
+}
+"""
+
+FIXTURE_FOCUS_STALE = """[
+  {"ref": "DONE-TASK", "status": "active", "note": "should drift — task is done"},
+  {"ref": "SESSION-RESOLVED-TASK", "status": "active", "note": "should drift — resolved in session"},
+  {"ref": "OPEN-TASK", "status": "active", "note": "current focus — no drift"},
+  {"ref": "COMPLETED-TASK", "status": "paused", "note": "should drift — task completed"},
+  {"ref": "OLD-DONE", "status": "done", "note": "already closed focus — skip"}
+]
+"""
+
+FIXTURE_FOCUS_ZERO = """[
+  {"ref": "CURRENT-TASK", "status": "active", "note": "current focus — no drift"}
+]
+"""
+
+from instances.tasks_provider import FocusTaskReconciler  # noqa: E402
+
+# ── FocusTaskReconciler: stale-vs-task-done ──────────────────────────
+
+tmp6 = _tmp()
+_write_vsm(tmp6, content=FIXTURE_VSM_FOCUS)
+(tmp6 / "current_focus.json").write_text(FIXTURE_FOCUS_STALE)
+
+# Load focus items the same way load() does
+from instances.tasks_provider import _load_focus  # noqa: E402
+focus_items = _load_focus(tmp6 / "TASKS.vsm")
+
+rec_focus = FocusTaskReconciler(tmp6 / "TASKS.vsm", focus_items=focus_items)
+drifts_f = rec_focus.diff()
+subjects_f = {d.subject for d in drifts_f}
+kinds_f = {(d.subject, d.kind) for d in drifts_f}
+
+check("focus_rec.done_task_drift",
+      ("DONE-TASK", "stale_focus_task_done") in kinds_f,
+      f"got {kinds_f}")
+check("focus_rec.session_resolved_drift",
+      ("SESSION-RESOLVED-TASK", "stale_focus_session_resolved") in kinds_f,
+      f"got {kinds_f}")
+
+# ── FocusTaskReconciler: open task NOT flagged ───────────────────────
+
+check("focus_rec.open_task_not_flagged",
+      "OPEN-TASK" not in subjects_f,
+      f"unexpected drift on OPEN-TASK: {subjects_f}")
+
+# ── FocusTaskReconciler: completed task stale (check via paused) ─────
+
+check("focus_rec.completed_task_drift",
+      ("COMPLETED-TASK", "stale_focus_task_done") in kinds_f,
+      f"got {kinds_f}")
+
+# ── FocusTaskReconciler: already-done focus entry skipped ────────────
+
+check("focus_rec.old_done_skipped",
+      "OLD-DONE" not in subjects_f,
+      f"OLD-DONE should be skipped (already closed): {subjects_f}")
+
+# ── FocusTaskReconciler: untracked task not flagged ──────────────────
+
+check("focus_rec.untracked_not_flagged",
+      "UNTRACKED-OPEN-TASK" not in subjects_f,
+      f"unexpected drift on untracked task: {subjects_f}")
+
+# ── FocusTaskReconciler: total drift count ──────────────────────────
+
+check("focus_rec.total_3", len(drifts_f) == 3,
+      f"expected 3 drifts, got {len(drifts_f)}: {subjects_f}")
+
+# ── FocusTaskReconciler: drift evidence richness ─────────────────────
+
+for d in drifts_f:
+    check(f"focus_rec.evidence_{d.subject}",
+          "focus_entry" in d.evidence and "ref" in d.evidence["focus_entry"],
+          f"missing focus_entry evidence for {d.subject}")
+
+del rec_focus, drifts_f, subjects_f, kinds_f, focus_items
+
+# ── FocusTaskReconciler: current focus = zero drift ──────────────────
+
+tmp7 = _tmp()
+_write_vsm(tmp7, content=FIXTURE_VSM_ZERO_DRIFT)
+(tmp7 / "current_focus.json").write_text(FIXTURE_FOCUS_ZERO)
+
+focus_items_z = _load_focus(tmp7 / "TASKS.vsm")
+rec_zero = FocusTaskReconciler(tmp7 / "TASKS.vsm", focus_items=focus_items_z)
+drifts_z = rec_zero.diff()
+check("focus_rec.zero_drift", len(drifts_z) == 0,
+      f"expected zero drifts, got {len(drifts_z)}: {[d.subject for d in drifts_z]}")
+
+del rec_zero, drifts_z, focus_items_z
+
+# ── FocusTaskReconciler: missing focus file doesn't crash ────────────
+
+tmp8 = _tmp()
+_write_vsm(tmp8, content=FIXTURE_VSM_ZERO_DRIFT)
+# No focus file written — _load_focus returns []
+rec_missing = FocusTaskReconciler(tmp8 / "TASKS.vsm")
+drifts_m = rec_missing.diff()
+check("focus_rec.missing_file_no_crash", isinstance(drifts_m, list),
+      f"expected list, got {type(drifts_m)}")
+check("focus_rec.missing_file_zero_drift", len(drifts_m) == 0,
+      f"expected zero drifts, got {len(drifts_m)}")
+
+del rec_missing, drifts_m
 
 # ── Cleanup ───────────────────────────────────────────────────────────
 

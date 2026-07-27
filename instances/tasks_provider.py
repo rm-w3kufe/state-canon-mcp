@@ -41,6 +41,13 @@ OPEN_STATUSES = frozenset({
 # Also pattern-match: any status containing "dispatched", "open", "seeded"
 OPEN_PATTERNS = re.compile(r"\b(open|dispatched|seeded|investigated)\b", re.IGNORECASE)
 
+# Statuses that indicate a task is closed/finished — used by FocusTaskReconciler
+# to flag focus entries that track already-done tasks.
+CLOSED_STATUSES = frozenset({
+    "done", "closed", "resolved", "deployed", "verified",
+    "complete", "completed",
+})
+
 # ── Line-based VSM parser ─────────────────────────────────────────────
 
 _BLOCK_START = re.compile(r'^(task|session)\s*\(\s*"([^"]*)"\s*(.*?)\)\s*[=:]\s*\{?\s*$')
@@ -276,6 +283,20 @@ def _is_open_status(status: Any) -> bool:
         return False
     s = str(status).lower().strip()
     return bool(OPEN_PATTERNS.search(s))
+
+
+def _is_closed_status(status: Any) -> bool:
+    """Check if a task status indicates the work is finished.
+
+    Used by FocusTaskReconciler to detect focus entries tracking
+    tasks that are already done.
+    """
+    if not status:
+        return False
+    s = str(status).lower().strip()
+    return s in CLOSED_STATUSES or any(
+        s.startswith(prefix) for prefix in ("done", "closed", "complete")
+    )
 
 
 def parse_vsm_file(path: str | Path) -> dict[str, Any]:
@@ -520,7 +541,10 @@ def load(path: str | Path):
     provider.path = vsm_path.resolve()
     provider._doc = data
 
-    reconcilers: list[Reconciler] = [TaskSessionReconciler(vsm_path)]
+    reconcilers: list[Reconciler] = [
+        TaskSessionReconciler(vsm_path),
+        FocusTaskReconciler(vsm_path, focus_items=focus_items),
+    ]
 
     return provider, reconcilers
 
@@ -627,5 +651,129 @@ class TaskSessionReconciler(Reconciler):
                         "status_field": status,
                     },
                 ))
+
+        return drifts
+
+
+class FocusTaskReconciler(Reconciler):
+    """Flags focus entries whose status says active/paused but whose
+    referenced task is actually done or resolved.
+
+    Two drift kinds:
+    - *stale_focus_task_done*: focus entry is active/paused but the task's
+      own status is closed-like (done/closed/completed/...)
+    - *stale_focus_session_resolved*: focus entry is active/paused but the
+      task ref appears in a session's ``resolved:[]`` list (even if the
+      task status wasn't updated).
+
+    Domain ``focus`` — coexists with ``TaskSessionReconciler`` (domain
+    ``tasks``). Both are wired in ``load()``.
+    """
+
+    domain = "focus"
+
+    def __init__(self, vsm_path: str | Path,
+                 focus_items: list[dict] | None = None):
+        self._vsm_path = Path(vsm_path)
+        self._focus_items = focus_items  # pre-loaded or None (will lazy-load)
+        self._data: dict[str, Any] | None = None
+        self._resolved_ids: set[str] | None = None
+
+    def _get_data(self) -> dict[str, Any]:
+        if self._data is None:
+            self._data = parse_vsm_file(self._vsm_path)
+        return self._data
+
+    def _session_resolved_ids(self) -> set[str]:
+        """Build a set of all task refs that appear in session resolved:[] lists.
+
+        Reuses the same reference extraction as TaskSessionReconciler.  Cached."""
+        if self._resolved_ids is not None:
+            return self._resolved_ids
+        data = self._get_data()
+        sessions = data.get("sessions", [])
+        ids: set[str] = set()
+        for sess in sessions:
+            raw = sess.get("resolved", [])
+            for entry in raw:
+                ids.update(_extract_references(str(entry)))
+        self._resolved_ids = ids
+        return ids
+
+    # ── Reconciler protocol ──
+
+    def declared(self) -> list[dict]:
+        """Focus entries — the declared state."""
+        if self._focus_items is not None:
+            return self._focus_items
+        return _load_focus(self._vsm_path)
+
+    def observe(self) -> list[dict]:
+        """Tasks — the observed reality of whether work is done."""
+        return self._get_data().get("tasks", [])
+
+    def diff(self) -> list[Drift]:
+        tasks = self._get_data().get("tasks", [])
+        focus_entries = self.declared()
+        session_resolved = self._session_resolved_ids()
+
+        # Build task map for quick lookup
+        task_map: dict[str, dict] = {}
+        for t in tasks:
+            tid = t.get("id", "")
+            task_map[tid] = t
+            for alt_field in ("name", "title", "ref"):
+                alt_val = t.get(alt_field)
+                if alt_val and alt_val not in task_map:
+                    task_map[str(alt_val)] = t
+
+        drifts: list[Drift] = []
+
+        for entry in focus_entries:
+            ref = entry.get("ref", "")
+            if not ref:
+                continue
+
+            f_status = entry.get("status", "").lower().strip()
+
+            # Skip already-closed focus entries
+            if f_status in ("done", "closed", "resolved", "completed"):
+                continue
+
+            # Only flag active/paused entries
+            if f_status not in ("", "active", "paused"):
+                continue
+
+            task = task_map.get(ref)
+
+            # (a) Task's own status is closed-like
+            if task and _is_closed_status(task.get("status", "")):
+                task_status = str(task.get("status", ""))
+                drifts.append(Drift(
+                    "stale_focus_task_done",
+                    ref,
+                    f"Focus entry '{ref}' is '{f_status}' but task "
+                    f"has status='{task_status}'",
+                    {
+                        "focus_entry": {"ref": ref, "status": entry.get("status", ""),
+                                        "note": entry.get("note", "")},
+                        "task_status": task_status,
+                    },
+                ))
+                continue
+
+            # (b) Ref appears in session resolved:[] list
+            if ref in session_resolved:
+                drifts.append(Drift(
+                    "stale_focus_session_resolved",
+                    ref,
+                    f"Focus entry '{ref}' is '{f_status}' but resolved "
+                    f"in session",
+                    {
+                        "focus_entry": {"ref": ref, "status": entry.get("status", ""),
+                                        "note": entry.get("note", "")},
+                    },
+                ))
+                continue
 
         return drifts
