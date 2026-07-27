@@ -101,6 +101,7 @@ python3 /abs/path/state-canon/mcp_server.py --state      /abs/path/your-state.js
 python3 /abs/path/state-canon/mcp_server.py --sqlite     /abs/path/your-state.db     # any SQLite DB
 python3 /abs/path/state-canon/mcp_server.py --git        /abs/path/your-repo         # a git working tree
 python3 /abs/path/state-canon/mcp_server.py --microstack /abs/path/state-canon/corpus/microstack  # demo
+python3 /abs/path/state-canon/mcp_server.py --instance   /abs/path/your-instance.py:arg  # bring-your-own
 ```
 
 > **Architecture note:** the server runs **locally, beside your agent** (stdio). Your state lives where
@@ -181,6 +182,18 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"s
 ```
 → `"holds": false` **with evidence**: declared `active`, observed `stopped`. That is the whole philosophy in
 one call: *don't trust the report — verify against state.*
+
+**4. Combined demo — full agent canon with session journaling, per-ref focus tracking, and a VSM task provider:**
+```bash
+python3 /abs/path/state-canon/mcp_server.py \
+  --instance /abs/path/instances/tasks_provider.py:/abs/path/your-TASKS.vsm \
+  --journal  /abs/path/sessions/journal.db \
+  --focus    /abs/path/current_focus.json
+```
+This enables `state_onboard`/`state_query`/`state_reconcile` (task and focus
+reconcilers), `state_journal_*` (snapshot/diff/history), and
+`state_focus_mark`/`state_focus_close` (per-agent focus tracking) — the full
+canon loop with no external dependencies.
 
 **3. With your agent attached**, ask it:
 - *"What's the current state of the system? Any drift?"* → it calls `state_onboard` once.
@@ -292,6 +305,7 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
 | Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero on non-BBH data |
 | VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 52/52 checks (VSM parser + TaskSessionReconciler catches stale tasks + FocusTaskReconciler catches stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
+| End-to-end smoke (subprocess stdio) | ✅ 27/27 checks — spawns real MCP server with `--instance + --focus + --journal`, sends JSON-RPC over stdio, asserts reconcile patterns, focus mark/close, journal persist, onboard digest |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |

@@ -5,6 +5,22 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.6.1] — 2026-07-27
+
+### Fixed
+- `_load_instance_file()` crash when `--instance` module uses `@dataclass`
+  or other Python internals that require `cls.__module__` to be findable
+  in `sys.modules` at class-definition time. The fix registers the module
+  in `sys.modules` **before** `exec_module()` — one line: `sys.modules[spec.name] = mod`.
+
+### Added
+- End-to-end smoke test (`tests/test_e2e_smoke.py`): spawns the actual MCP
+  server as a subprocess with `--instance tasks_provider.py + --focus + --journal`,
+  sends real JSON-RPC messages over stdio (initialize, tools/list,
+  state_reconcile, state_query, state_focus_mark/close, state_journal_mark,
+  state_onboard), asserts 27 checks on the live output.
+- Combined `--instance + --journal + --focus` example in README quickstart.
+
 ## [0.6.0] — 2026-07-27
 
 ### Added

@@ -166,7 +166,7 @@ class StateRagServer:
         if method == "initialize":
             return {"protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "state-canon", "version": "0.6.0"}}
+                    "serverInfo": {"name": "state-canon", "version": "0.6.1"}}
         if method == "ping":
             return {}
         if method == "tools/list":
@@ -271,10 +271,14 @@ def _load_instance_file(module_path, arg: str):
     """Load an instance module (a .py with load(arg) [+ DIGEST_POLICY]) →
     (provider, reconcilers, digest_policy). This is the bring-your-own hook."""
     import importlib.util
+    import sys
     from pathlib import Path
     inst = Path(module_path)
     spec = importlib.util.spec_from_file_location(inst.stem, inst)
     mod = importlib.util.module_from_spec(spec)
+    # Register in sys.modules BEFORE exec_module — required by @dataclass and
+    # other Python internals that look up cls.__module__ in sys.modules.
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     provider, reconcilers = mod.load(arg)
     return provider, reconcilers, getattr(mod, "DIGEST_POLICY", None)
