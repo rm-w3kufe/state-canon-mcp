@@ -291,7 +291,7 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
 | Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero on non-BBH data |
-| VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 39/39 checks (VSM parser + reconciler catches stale tasks). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
+| VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 52/52 checks (VSM parser + TaskSessionReconciler catches stale tasks + FocusTaskReconciler catches stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |
