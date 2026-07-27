@@ -5,12 +5,24 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
-## [0.3.0] — 2026-07-27
+## [0.4.0] — 2026-07-27
 
 ### Added
-- `state_journal_mark` / `state_journal_diff` / `state_journal_history` — opt-in
-  session-snapshot tracking (`--journal PATH`): "what changed since last session?",
-  simple trend tracking. Off by default; existing setups are unaffected.
+- `instances/tasks_provider.py` — generic VSM task-file provider. Parses
+  `task()` / `session()` blocks from `.vsm` files into domains `tasks`,
+  `sessions`, `meta`. Supports new-style (`{...}`), old-style single-line,
+  and old-style indented notation. Includes `TaskSessionReconciler` that
+  flags tasks whose status says `open`/`dispatched`/`seeded` but whose id
+  appears in a later session's `resolved: []` list (declared-vs-observed
+  drift for task tracking).
+- Co-located `current_focus.json` support — if a `current_focus.json` file
+  exists next to the VSM file, its records are exposed as the `focus`
+  domain (per-agent work-tracking items with `ref`, `status`, `note`,
+  `started_at`, `updated_at`).
+- 13 tests for the parser, reconciler, and focus loading
+  (`tests/test_tasks_provider.py`).
+- Reference documentation for the tasks provider instance
+  (`instances/reference-tasks.md`).
 
 ## [0.2.0] — 2026-07-24
 
