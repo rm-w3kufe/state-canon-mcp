@@ -24,6 +24,13 @@ check yours.
 - Reference documentation for the tasks provider instance
   (`instances/reference-tasks.md`).
 
+## [0.3.0] — 2026-07-27
+
+### Added
+- `state_journal_mark` / `state_journal_diff` / `state_journal_history` — opt-in
+  session-snapshot tracking (`--journal PATH`): "what changed since last session?",
+  simple trend tracking. Off by default; existing setups are unaffected.
+
 ## [0.2.0] — 2026-07-24
 
 ### Changed
