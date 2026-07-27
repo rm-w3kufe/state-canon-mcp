@@ -306,6 +306,7 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero on non-BBH data |
 | VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 52/52 checks (VSM parser + TaskSessionReconciler catches stale tasks + FocusTaskReconciler catches stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
 | End-to-end smoke (subprocess stdio) | ✅ 27/27 checks — spawns real MCP server with `--instance + --focus + --journal`, sends JSON-RPC over stdio, asserts reconcile patterns, focus mark/close, journal persist, onboard digest |
+| FreshnessReconciler | ✅ `state_canon/freshness.py` — generic core reconciler: flags missing or stale files by mtime vs max_age. Two drift kinds (`missing`, `stale`). Domain-configurable. Stdlib-only, 24/24 checks. |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |

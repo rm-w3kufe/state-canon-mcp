@@ -21,9 +21,10 @@ The core is domain-agnostic; a user plugs in their own state:
 | **microstack demo** | `corpus/microstack/` (loader in `instances/microstack.py`) | `JsonStateProvider` over `synthesized/state.json`; reconciler = `raw/manifest.txt` (declared) vs `raw/processes.txt` (reality). Reproducible token-cost experiment. |
 | **Git worktree drift** | `state_canon/git_provider.py` (built-in, `--git PATH`) | Git's index/HEAD as *declared*, working tree as *observed* — `git status` becomes a typed drift report (mismatch / orphan / declared_but_missing). 17/17 checks. |
 | **VSM task-file provider** | `instances/tasks_provider.py` (`--instance tasks_provider.py:PATH`) | Parses `task()`/`session()` blocks from `.vsm` files into domains `tasks`, `sessions`, `meta`. Co-located `current_focus.json` becomes `focus` domain. Two reconcilers: `TaskSessionReconciler` (domain `tasks` — flags open-but-resolved tasks) and `FocusTaskReconciler` (domain `focus` — flags stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`). 52/52 checks. |
+| **Freshness reconciler** | `state_canon/freshness.py` (built-in — instantiate `FreshnessReconciler` in your instance module) | Core reconciler class: flags a file as `missing` or `stale` based on mtime vs max_age_seconds. Domain `"freshness"` (overridable). Stdlib-only, 24/24 checks. |
 
-All four are the same abstraction — `StateProvider` + `Reconciler` — wired through the same MCP server.
-The list proves the pattern generalizes: SQLite, JSON, Git working trees, VSM notation — none of these
+All five are the same abstraction — `StateProvider` + `Reconciler` — wired through the same MCP server.
+The list proves the pattern generalizes: SQLite, JSON, Git working trees, VSM notation, file freshness — none of these
 required a change to the core.
 
 ## Opt-in side systems: a repeating pattern

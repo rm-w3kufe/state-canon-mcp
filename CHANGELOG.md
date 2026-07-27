@@ -5,6 +5,17 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.7.0] — 2026-07-27
+
+### Added
+- `FreshnessReconciler` (`state_canon/freshness.py`) — generic core reconciler
+  that flags a file as stale if its mtime is older than *N* seconds. Two drift
+  kinds: `missing` (path does not exist) and `stale` (exists but too old —
+  detailed message with age in days vs max). Domain defaults to `"freshness"`,
+  overridable. Configured in code — instantiate in your instance module:
+  `FreshnessReconciler(path="/var/lib/state.db", max_age_seconds=86400)`.
+  Stdlib-only, 24/24 checks.
+
 ## [0.6.1] — 2026-07-27
 
 ### Fixed
