@@ -21,11 +21,43 @@ The core is domain-agnostic; a user plugs in their own state:
 | **microstack demo** | `corpus/microstack/` (loader in `instances/microstack.py`) | `JsonStateProvider` over `synthesized/state.json`; reconciler = `raw/manifest.txt` (declared) vs `raw/processes.txt` (reality). Reproducible token-cost experiment. |
 | **Git worktree drift** | `state_canon/git_provider.py` (built-in, `--git PATH`) | Git's index/HEAD as *declared*, working tree as *observed* — `git status` becomes a typed drift report (mismatch / orphan / declared_but_missing). 17/17 checks. |
 | **VSM task-file provider** | `instances/tasks_provider.py` (`--instance tasks_provider.py:PATH`) | Parses `task()`/`session()` blocks from `.vsm` files into domains `tasks`, `sessions`, `meta`. Co-located `current_focus.json` becomes `focus` domain. Two reconcilers: `TaskSessionReconciler` (domain `tasks` — flags open-but-resolved tasks) and `FocusTaskReconciler` (domain `focus` — flags stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`). 52/52 checks. |
-| **Freshness reconciler** | `state_canon/freshness.py` (built-in — instantiate `FreshnessReconciler` in your instance module) | Core reconciler class: flags a file as `missing` or `stale` based on mtime vs max_age_seconds. Domain `"freshness"` (overridable). Stdlib-only, 24/24 checks. |
 
-All five are the same abstraction — `StateProvider` + `Reconciler` — wired through the same MCP server.
-The list proves the pattern generalizes: SQLite, JSON, Git working trees, VSM notation, file freshness — none of these
+All four are the same abstraction — `StateProvider` + `Reconciler` — wired through the same MCP server.
+The list proves the pattern generalizes: SQLite, JSON, Git working trees, VSM notation — none of these
 required a change to the core.
+
+### Composable reconciler: freshness
+
+`FreshnessReconciler` (`state_canon/freshness.py`) is a **composable** reconciler — it does **not** come with its own
+provider or server flag. You import it into an **existing** instance's `load()` and add it to the returned
+reconcilers list:
+
+```python
+from state_canon.freshness import FreshnessReconciler
+
+def load(path: str):
+    """Your instance's load() — tasks_provider, sqlite_ops, or any other."""
+
+    provider, base_reconcilers = _your_existing_loader(path)
+
+    reconcilers = [
+        *base_reconcilers,
+        FreshnessReconciler(
+            path="/var/lib/vsf/state.db",
+            max_age_seconds=86400,          # warn if older than 1 day
+            domain="vsf-state-freshness",   # overrides default "freshness"
+            label="VSF state DB",           # cosmetic label in drift message
+        ),
+    ]
+    return provider, reconcilers, getattr(mod, "DIGEST_POLICY", None)
+```
+
+When the server runs, `state_reconcile` includes the freshness domain: no drift if the file is current,
+a `missing` or `stale` drift if it isn't.
+
+This is **opt-in by composition**, not by flag — there's no `--freshness` argument. Journal and focus
+(below) are opt-in-by-flag because they add new *tools*; reconcilers only add new *drift domains* to the
+existing `state_reconcile` tool, so composition is the right mechanism.
 
 ## Opt-in side systems: a repeating pattern
 
