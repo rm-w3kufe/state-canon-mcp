@@ -67,6 +67,9 @@ Exposed over the Model Context Protocol so *any* agent can plug in:
 | `state_query(domain, filter)` | a narrow slice, on demand |
 | `state_verify(claim)` | ★ *don't trust the report — check it against ground truth* → `{holds, actual, evidence}` |
 | `state_reconcile(domain)` | model≡reality → the drift / orphan report |
+| `state_journal_mark(session_id?, drifts?)` | *opt-in (`--journal PATH`)* — save a session snapshot for later diff/trend |
+| `state_journal_diff(from_id?, to_id?)` | *opt-in* — what changed between two snapshots |
+| `state_journal_history(limit?)` | *opt-in* — recent snapshots |
 
 Plus resources (`state://digest`, `state://schema`, `state://rules`, `state://handoff`) for clients that
 inject context up front. The split is deliberate — **resources** feed the front-load (inject the digest at
@@ -136,6 +139,24 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
 ```
 
 You should see one JSON line with `"serverInfo": {"name": "state-canon"}`.
+
+### Updating
+
+state-canon-mcp is a plain `git clone`, not a package — updating is a `git pull`:
+
+```bash
+cd state-canon && git pull
+```
+
+Check what changed: **[CHANGELOG.md](./CHANGELOG.md)**, or `git log --oneline v0.2.0..HEAD`
+against the version your `initialize` response currently reports.
+
+Your own customizations are safe across an update: a `--state` JSON file, a
+`--sqlite`/`--git` target, or a full `--instance` module all live **outside** this repo
+and are loaded at runtime — a `git pull` never touches them. The only thing that could
+break a custom instance is a breaking change to the `StateProvider` / `Reconciler`
+interface itself, and that would always be called out under `### Changed` in the
+changelog, never buried in `### Added`.
 
 ## Quickstart — the 60-second demo
 
@@ -267,6 +288,7 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Second living instance (SQLite over a real production canon) | ✅ 14/14 structural checks; digest policy born from a real 44k→12k lesson |
 | Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
+| Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero on non-BBH data |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |
@@ -283,6 +305,7 @@ documentation (the pattern we run daily), not orchestration code — nothing her
 - **[skills/](./skills/)** — the nine disciplines as portable, installable skills (each with its scar).
 - **[agents/](./agents/)** — the agent as an adoptable spec (`agent.md`).
 - **[corpus/microstack/](./corpus/microstack/)** — the measurement corpus, experiment design, and results.
+- **[CHANGELOG.md](./CHANGELOG.md)** — what changed, by version.
 
 ## Repository layout
 
@@ -294,7 +317,7 @@ state-canon/
 ├── skills/              ← the disciplines as portable skills (9 · installable in Claude Code)
 ├── agents/              ← the agent as an adoptable spec
 ├── mcp_server.py        ← one-file launcher for any MCP client
-├── state_canon/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · server
+├── state_canon/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · journal · server
 ├── instances/           ← reference instances (microstack demo · a real SQLite canon · git)
 └── corpus/microstack/   ← controlled measurement corpus
     ├── raw/             ← what a COLD agent faces (must synthesize)
