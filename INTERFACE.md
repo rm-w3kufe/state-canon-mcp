@@ -13,12 +13,49 @@ The core is domain-agnostic; a user plugs in their own state:
 - **`DigestAssembler`**: registered domains + a policy (what matters) → the compact onboard digest
 - **MCP adapter**: thin wrapper exposing the tools/resources above over provider + reconciler
 
-## Reference instances (the abstraction has ≥2 instances from day one — proves it generalizes)
-- **A production ops canon** — the mapped-and-policied `SqliteStateProvider` over a live operations
-  database (`instances/sqlite_ops.py`; domains: rules/services/components/chains/blockers/topology);
-  the deployment's own host-side reconciliation timers write the DB. The real, live instance.
-- **microstack** (the corpus) — `StateProvider` over `synthesized/state.json`; reconciler = `raw/manifest.txt`
-  (declared) vs `raw/processes.txt` (reality). The tiny, reproducible instance.
+## Reference instances (the abstraction has ≥3 instances from day one — proves it generalizes)
+
+| instance | file | pattern |
+|---|---|---|
+| **Production ops canon** | `instances/sqlite_ops.py` | Mapped `SqliteStateProvider` over a live operations DB (domains: rules/services/components/chains/blockers/topology); host-side reconciliation timers write the DB. Real, live instance. |
+| **microstack demo** | `corpus/microstack/` (loader in `instances/microstack.py`) | `JsonStateProvider` over `synthesized/state.json`; reconciler = `raw/manifest.txt` (declared) vs `raw/processes.txt` (reality). Reproducible token-cost experiment. |
+| **Git worktree drift** | `state_canon/git_provider.py` (built-in, `--git PATH`) | Git's index/HEAD as *declared*, working tree as *observed* — `git status` becomes a typed drift report (mismatch / orphan / declared_but_missing). 17/17 checks. |
+| **VSM task-file provider** | `instances/tasks_provider.py` (`--instance tasks_provider.py:PATH`) | Parses `task()`/`session()` blocks from `.vsm` files into domains `tasks`, `sessions`, `meta`. Co-located `current_focus.json` becomes `focus` domain. `TaskSessionReconciler` flags open-but-resolved tasks. 39/39 checks. |
+
+All four are the same abstraction — `StateProvider` + `Reconciler` — wired through the same MCP server.
+The list proves the pattern generalizes: SQLite, JSON, Git working trees, VSM notation — none of these
+required a change to the core.
+
+## Opt-in side systems: a repeating pattern
+
+Journal and focus form a repeating architectural pattern — opt-in side systems that extend the server
+without touching the provider:
+
+```mermaid
+flowchart LR
+    subgraph Server["state-canon server"]
+        CORE["StateProvider + Reconciler<br/>(required)"]
+        JOURNAL["StateJournal<br/>--journal PATH"]
+        FOCUS["FocusTracker<br/>--focus PATH"]
+    end
+
+    CORE --> BASE["state_onboard / query / verify / reconcile"]
+    JOURNAL --> JT["state_journal_mark / diff / history"]
+    FOCUS --> FT["state_focus_mark / close"]
+
+    JOURNAL --- JDB[("journal.db<br/>SQLite — append-only")]
+    FOCUS --- FOCUSFILE[("focus.json<br/>JSON array — atomic replace")]
+```
+
+Both opt-in flags share the same contract:
+- **Enable**: add `--journal PATH` or `--focus PATH` to any server invocation
+- **Tools**: the new tools appear in `tools/list` only when the flag is set
+- **Error**: calling the tools without the flag returns a clear `"not enabled"` error
+- **Read-back**: the side data is queryable through the same `state_query` dispatch
+- **No provider coupling**: neither journal nor focus knows what provider the server was started with
+
+With two real implementations, the pattern is proven — a third opt-in side system (e.g. an alarm
+threshold tracker, an experiment log, a calibration ledger) would follow the same structure.
 
 ## Roadmap instance: version control (Git first, VCS-agnostic by construction)
 

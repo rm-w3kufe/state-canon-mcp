@@ -5,6 +5,15 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.5.0] — 2026-07-27
+
+### Added
+- `state_focus_mark` / `state_focus_close` — opt-in per-agent focus tracking
+  (`--focus PATH`). `FocusTracker` class with atomic write (temp+rename),
+  upsert-by-ref `mark()`, `close()` for status=done. `state_query('focus')`
+  reads entries back. Returns error if `--focus` not set.
+- 42 tests for the focus tracker (unit + MCP dispatch), all pass.
+
 ## [0.4.0] — 2026-07-27
 
 ### Added

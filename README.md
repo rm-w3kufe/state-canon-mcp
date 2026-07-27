@@ -70,6 +70,8 @@ Exposed over the Model Context Protocol so *any* agent can plug in:
 | `state_journal_mark(session_id?, drifts?)` | *opt-in (`--journal PATH`)* — save a session snapshot for later diff/trend |
 | `state_journal_diff(from_id?, to_id?)` | *opt-in* — what changed between two snapshots |
 | `state_journal_history(limit?)` | *opt-in* — recent snapshots |
+| `state_focus_mark(ref, status?, note?)` | *opt-in (`--focus PATH`)* — upsert a focus entry by ref (create or update status/note) |
+| `state_focus_close(ref, note?)` | *opt-in* — mark a focus entry as done; state_query('focus') reads back |
 
 Plus resources (`state://digest`, `state://schema`, `state://rules`, `state://handoff`) for clients that
 inject context up front. The split is deliberate — **resources** feed the front-load (inject the digest at
@@ -289,6 +291,7 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
 | Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero on non-BBH data |
+| VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 39/39 checks (VSM parser + reconciler catches stale tasks). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |
