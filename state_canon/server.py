@@ -1,7 +1,8 @@
 """Minimal MCP server (stdio, JSON-RPC 2.0, newline-delimited). Stdlib only.
 
 Exposes the state-canon surface (INTERFACE.md):
-  tools:     state_onboard · state_query · state_verify · state_reconcile
+  tools:     state_onboard · state_query · state_verify · state_reconcile ·
+             state_journal_mark · state_journal_diff · state_journal_history (opt-in, --journal)
   resources: state://digest · state://schema · state://rules · state://handoff
 
 Run:
@@ -10,6 +11,7 @@ Run:
   python3 -m state_canon.server --git path/to/repo
   python3 -m state_canon.server --microstack path/to/corpus/microstack
   python3 -m state_canon.server --instance path/to/my_instance.py:ARG   # bring your own
+  # add --journal path/to/journal.db to any of the above to enable state_journal_*
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ import sys
 from typing import Any
 
 from .digest import assemble
+from .journal import StateJournal
 from .provider import JsonStateProvider, StateProvider
 from .reconcile import Reconciler
 
@@ -52,6 +55,23 @@ TOOLS = [
     {"name": "state_reconcile",
      "description": "model≡reality: recompute declared-vs-observed drift live (fresh, not the stored snapshot).",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "state_journal_mark",
+     "description": "MODERATE (~200 tok): save a state snapshot to the journal for later diff/tracking. "
+                    "Call at session end to capture state; diff next session to see what changed. "
+                    "Requires the server to be started with --journal.",
+     "inputSchema": {"type": "object",
+                     "properties": {"session_id": {"type": "string", "description": "optional session label"},
+                                    "drifts": {"type": "array", "items": {"type": "object"},
+                                               "description": "optional drift list"}}}},
+    {"name": "state_journal_diff",
+     "description": "CHEAP (~100 tok): diff two journal snapshots to see what changed.",
+     "inputSchema": {"type": "object",
+                     "properties": {"from_id": {"type": "integer", "description": "snapshot id (default: second-last)"},
+                                    "to_id": {"type": "integer", "description": "snapshot id (default: last)"}}}},
+    {"name": "state_journal_history",
+     "description": "CHEAP (~80 tok): show recent journal snapshots.",
+     "inputSchema": {"type": "object",
+                     "properties": {"limit": {"type": "integer", "description": "max entries (default 10)"}}}},
 ]
 
 RESOURCES = [
@@ -64,10 +84,11 @@ RESOURCES = [
 
 class StateRagServer:
     def __init__(self, provider: StateProvider, reconcilers: list[Reconciler] | None = None,
-                 digest_policy: dict | None = None):
+                 digest_policy: dict | None = None, journal_db: str | None = None):
         self.provider = provider
         self.reconcilers = reconcilers or []
         self.digest_policy = digest_policy
+        self.journal = StateJournal(journal_db) if journal_db else None
 
     # ── tool implementations ──
     def state_onboard(self) -> str:
@@ -147,7 +168,46 @@ class StateRagServer:
             return self.state_verify(args["domain"], args["expect"], args.get("filter"))
         if name == "state_reconcile":
             return self.state_reconcile()
+        if name == "state_journal_mark":
+            return self._journal_mark(args.get("session_id"), args.get("drifts"))
+        if name == "state_journal_diff":
+            return self._journal_diff(args.get("from_id"), args.get("to_id"))
+        if name == "state_journal_history":
+            return self._journal_history(args.get("limit", 10))
         raise ValueError(f"unknown tool: {name}")
+
+    # ── journal tools ──
+
+    def _journal_mark(self, session_id: str | None = None,
+                       drifts: list[dict] | None = None) -> dict:
+        if not self.journal:
+            return {"error": "journal not enabled (start server with --journal)"}
+        if drifts is None and self.reconcilers:
+            drifts = [d.as_dict() for rec in self.reconcilers for d in rec.diff()]
+        jid = self.journal.mark(session_id=session_id or "",
+                                 snapshot_type="mcp",
+                                 drifts=drifts)
+        return {"snapshot_id": jid, "drift_count": len(drifts or [])}
+
+    def _journal_diff(self, from_id: int | None = None,
+                       to_id: int | None = None) -> dict:
+        if not self.journal:
+            return {"error": "journal not enabled"}
+        return self.journal.diff(from_id=from_id, to_id=to_id)
+
+    def _journal_history(self, limit: int = 10) -> list[dict]:
+        if not self.journal:
+            return [{"error": "journal not enabled"}]
+        h = self.journal.history(limit=limit)
+        return [{
+            "id": r["id"],
+            "type": r["snapshot_type"],
+            "findings": r["production_findings"],
+            "drifts": r["drift_count"],
+            "rag_accuracy": f"{r['rag_accuracy']:.0%}" if r.get("rag_accuracy") else "-",
+            "session": r["session_id"] or "-",
+            "at": r["created_at"],
+        } for r in h]
 
     # ── stdio loop ──
     def serve(self) -> None:
@@ -189,6 +249,8 @@ def main() -> None:
     ap.add_argument("--microstack", help="path to the microstack corpus dir (demo: provider + reconciler)")
     ap.add_argument("--instance", metavar="MODULE.py:ARG",
                     help="bring your own instance: a module exposing load(arg) [+ DIGEST_POLICY]")
+    ap.add_argument("--journal", metavar="PATH",
+                    help="enable state_journal_* tools, persisting snapshots to PATH (SQLite DB)")
     args = ap.parse_args()
 
     if args.instance:
@@ -209,7 +271,7 @@ def main() -> None:
     else:
         ap.error("need one of --state, --sqlite, --git, --microstack, --instance")
 
-    StateRagServer(provider, reconcilers, policy).serve()
+    StateRagServer(provider, reconcilers, policy, journal_db=args.journal).serve()
 
 
 if __name__ == "__main__":

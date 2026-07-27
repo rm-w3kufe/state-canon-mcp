@@ -75,7 +75,8 @@ def rpc(method: str, params: dict | None = None, req_id: int = 1) -> dict:
 init = rpc("initialize")
 check("mcp.initialize", init["serverInfo"]["name"] == "state-canon")
 tools = {t["name"] for t in rpc("tools/list")["tools"]}
-check("mcp.tools", tools == {"state_onboard", "state_query", "state_verify", "state_reconcile"}, str(tools))
+check("mcp.tools", tools == {"state_onboard", "state_query", "state_verify", "state_reconcile",
+                              "state_journal_mark", "state_journal_diff", "state_journal_history"}, str(tools))
 out = rpc("tools/call", {"name": "state_reconcile", "arguments": {}})
 live = json.loads(out["content"][0]["text"])
 check("mcp.reconcile-live", len(live) == 3 and {d["kind"] for d in live}
@@ -84,5 +85,33 @@ res = rpc("resources/read", {"uri": "state://digest"})
 check("mcp.resource-digest", "CURRENT STATE" in res["contents"][0]["text"])
 check("mcp.notification-silent", server.dispatch({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None)
 check("mcp.error-answered", "error" in server.dispatch({"jsonrpc": "2.0", "id": 9, "method": "nope"}))
+
+# ── journal (opt-in via --journal / journal_db) ──
+out = rpc("tools/call", {"name": "state_journal_mark", "arguments": {}})
+check("journal.disabled-by-default", json.loads(out["content"][0]["text"]).get("error", "").startswith("journal not enabled"))
+
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as tmp:
+    jdb = str(Path(tmp) / "journal.db")
+    jserver = StateRagServer(provider, reconcilers, journal_db=jdb)
+
+    def jrpc(method: str, params: dict | None = None, req_id: int = 1) -> dict:
+        resp = jserver.dispatch({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}})
+        assert "error" not in resp, resp
+        return resp["result"]
+
+    m1 = json.loads(jrpc("tools/call", {"name": "state_journal_mark", "arguments": {"session_id": "s1"}})["content"][0]["text"])
+    check("journal.mark-first", m1["snapshot_id"] == 1 and m1["drift_count"] == 3, str(m1))
+    m2 = json.loads(jrpc("tools/call", {"name": "state_journal_mark", "arguments": {"session_id": "s2", "drifts": []}})["content"][0]["text"])
+    check("journal.mark-second", m2["snapshot_id"] == 2 and m2["drift_count"] == 0, str(m2))
+
+    hist = json.loads(jrpc("tools/call", {"name": "state_journal_history", "arguments": {}})["content"][0]["text"])
+    check("journal.history", len(hist) == 2 and hist[0]["session"] == "s2", str(hist))
+
+    dif = json.loads(jrpc("tools/call", {"name": "state_journal_diff", "arguments": {}})["content"][0]["text"])
+    check("journal.diff-drift-resolved", len(dif["drift"]["resolved"]) == 3, str(dif))
+    # no BBH-shaped `findings` table on this generic microstack instance — must
+    # degrade to zero, not crash (the point of the try/except in _gather_stats).
+    check("journal.gather-stats-degrades", "production_findings" not in dif.get("changes", {}), str(dif))
 
 print(f"\nALL {PASSED} CHECKS PASSED")
