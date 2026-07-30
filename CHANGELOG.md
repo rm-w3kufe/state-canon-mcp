@@ -5,6 +5,36 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.8.1] — 2026-07-30
+
+### Fixed
+- **`instances/tasks_provider.py` served stale data for the entire lifetime of
+  a long-running MCP server session** — found live, while closing out this
+  same day's housekeeping round: `state_focus_mark` then `state_reconcile`
+  in the *same* server session returned zero drift, because
+  `FocusTaskReconciler`'s `declared()` returned a `focus_items` list frozen
+  at `load()` time, never re-read. A direct edit to `TASKS.vsm` (the normal
+  way agents change it — not through this server) was invisible for the
+  same reason: the provider's `_doc` was built once via a
+  `JsonStateProvider.__new__` bypass (needed because its data comes from
+  parsing a `.vsm` file, not `json.loads`) and never reloaded, and both
+  `TaskSessionReconciler` and `FocusTaskReconciler` cached their own parsed
+  copy of the VSM file forever too. Given MCP servers aren't hot-reloaded
+  (0.6.1) and sessions run for hours with heavy file editing, this meant
+  `state_query`/`state_verify`/`state_reconcile` against `tasks`/`sessions`/
+  `focus` were serving whatever was true at server startup, indefinitely.
+  Fixed: a new `VsmStateProvider(JsonStateProvider)` reloads on mtime change
+  (same mechanism as the base class, `parse_vsm_file` instead of
+  `json.loads`); both reconcilers now check mtime before trusting their
+  cache; `FocusTaskReconciler` gained `bind_focus_tracker()` — the server
+  auto-wires the *same* `FocusTracker` instance `state_focus_mark` writes
+  through into any reconciler that exposes the hook, so `declared()` can
+  never silently diverge from what was actually written (closes the
+  `--focus PATH` vs. co-located-path footgun from 2026-07-27 as a side
+  effect, not just the staleness). 8 new regression checks in
+  `tests/test_tasks_provider.py` (60/60), reproduced and confirmed fixed
+  against the real MCP server subprocess, not just unit-level.
+
 ## [0.8.0] — 2026-07-30
 
 Housekeeping round from an external code review (6 findings) plus the most severe

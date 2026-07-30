@@ -512,6 +512,32 @@ def _load_focus(path: Path) -> list[dict[str, Any]]:
         return []
 
 
+class VsmStateProvider(JsonStateProvider):
+    """JsonStateProvider variant whose document comes from parsing a .vsm
+    file (parse_vsm_file), not json.loads — otherwise identical, including
+    reload-on-mtime-change (inherited query()/list_domains() both call
+    _reload_if_changed() first). A long-lived MCP server session that has
+    TASKS.vsm edited on disk (the normal case — agents edit it directly,
+    not through this server) now sees the change on the next query, instead
+    of serving whatever was parsed once at server startup forever."""
+
+    def __init__(self, vsm_path: str | Path):
+        self.path = Path(vsm_path)
+        self._mtime = -1.0
+        self._doc: dict[str, Any] = {}
+        self._reload_if_changed()
+
+    def _reload_if_changed(self) -> None:
+        mtime = self.path.stat().st_mtime
+        if mtime != self._mtime:
+            data = parse_vsm_file(self.path)
+            focus_items = _load_focus(self.path)
+            if focus_items:
+                data["focus"] = focus_items
+            self._doc = data
+            self._mtime = mtime
+
+
 def load(path: str | Path):
     """Load a VSM task file (or directory containing TASKS.vsm).
 
@@ -519,7 +545,8 @@ def load(path: str | Path):
 
     If *path* is a directory, looks for ``TASKS.vsm`` inside it.
     If a ``current_focus.json`` exists next to the VSM file, its
-    contents are exposed as the ``focus`` domain.
+    contents are exposed as the ``focus`` domain (used only as a fallback —
+    see FocusTaskReconciler.bind_focus_tracker for the live path).
     """
     path = Path(path)
     if path.is_dir():
@@ -529,21 +556,11 @@ def load(path: str | Path):
     else:
         vsm_path = path
 
-    data = parse_vsm_file(vsm_path)
-
-    # Co-located focus file
-    focus_items = _load_focus(vsm_path)
-    if focus_items:
-        data["focus"] = focus_items
-
-    provider = JsonStateProvider.__new__(JsonStateProvider)
-    # Bypass __init__'s json.loads — we already have the data
-    provider.path = vsm_path.resolve()
-    provider._doc = data
+    provider = VsmStateProvider(vsm_path)
 
     reconcilers: list[Reconciler] = [
         TaskSessionReconciler(vsm_path),
-        FocusTaskReconciler(vsm_path, focus_items=focus_items),
+        FocusTaskReconciler(vsm_path),
     ]
 
     return provider, reconcilers
@@ -574,12 +591,16 @@ class TaskSessionReconciler(Reconciler):
 
     def __init__(self, vsm_path: str | Path):
         self._vsm_path = Path(vsm_path)
-        # Cache parsed data
+        # Cached parsed data, invalidated on mtime change (not cached forever —
+        # a long server session outlives many direct edits to the VSM file).
         self._data: dict[str, Any] | None = None
+        self._data_mtime: float | None = None
 
     def _get_data(self) -> dict[str, Any]:
-        if self._data is None:
+        mtime = self._vsm_path.stat().st_mtime
+        if self._data is None or mtime != self._data_mtime:
             self._data = parse_vsm_file(self._vsm_path)
+            self._data_mtime = mtime
         return self._data
 
     def declared(self) -> list[dict]:
@@ -668,6 +689,16 @@ class FocusTaskReconciler(Reconciler):
 
     Domain ``focus`` — coexists with ``TaskSessionReconciler`` (domain
     ``tasks``). Both are wired in ``load()``.
+
+    ``declared()`` prefers, in order: (1) a bound live FocusTracker (see
+    ``bind_focus_tracker`` — this is what the server wires up when started
+    with ``--focus PATH``, guaranteeing this reads the exact same store
+    ``state_focus_mark``/``state_query('focus')`` use, not an independently
+    re-derived path that could silently diverge); (2) an explicit
+    ``focus_items`` list passed at construction (test/manual-injection use);
+    (3) a fresh read of the co-located ``current_focus.json`` next to the
+    VSM file, as a last-resort fallback when neither of the above applies
+    (e.g. the server was started without ``--focus``).
     """
 
     domain = "focus"
@@ -675,21 +706,31 @@ class FocusTaskReconciler(Reconciler):
     def __init__(self, vsm_path: str | Path,
                  focus_items: list[dict] | None = None):
         self._vsm_path = Path(vsm_path)
-        self._focus_items = focus_items  # pre-loaded or None (will lazy-load)
+        self._focus_items = focus_items  # explicit override (tests) — static, by design
+        self._focus_tracker = None       # bound later by the server, if --focus is set
         self._data: dict[str, Any] | None = None
-        self._resolved_ids: set[str] | None = None
+        self._data_mtime: float | None = None
+
+    def bind_focus_tracker(self, tracker) -> None:
+        """Called by StateRagServer.__init__ when the server was started with
+        --focus PATH. Makes declared() read the live, authoritative focus
+        store instead of re-deriving a (possibly different) path."""
+        self._focus_tracker = tracker
 
     def _get_data(self) -> dict[str, Any]:
-        if self._data is None:
+        mtime = self._vsm_path.stat().st_mtime
+        if self._data is None or mtime != self._data_mtime:
             self._data = parse_vsm_file(self._vsm_path)
+            self._data_mtime = mtime
         return self._data
 
     def _session_resolved_ids(self) -> set[str]:
         """Build a set of all task refs that appear in session resolved:[] lists.
 
-        Reuses the same reference extraction as TaskSessionReconciler.  Cached."""
-        if self._resolved_ids is not None:
-            return self._resolved_ids
+        Reuses the same reference extraction as TaskSessionReconciler. Not
+        cached across calls — cheap to recompute from _get_data() (itself
+        already cached-with-freshness), and caching it separately would need
+        its own invalidation logic for no real benefit."""
         data = self._get_data()
         sessions = data.get("sessions", [])
         ids: set[str] = set()
@@ -697,13 +738,15 @@ class FocusTaskReconciler(Reconciler):
             raw = sess.get("resolved", [])
             for entry in raw:
                 ids.update(_extract_references(str(entry)))
-        self._resolved_ids = ids
         return ids
 
     # ── Reconciler protocol ──
 
     def declared(self) -> list[dict]:
-        """Focus entries — the declared state."""
+        """Focus entries — the declared state. See class docstring for the
+        (tracker > explicit override > co-located fallback) priority."""
+        if self._focus_tracker is not None:
+            return self._focus_tracker.query()
         if self._focus_items is not None:
             return self._focus_items
         return _load_focus(self._vsm_path)

@@ -452,6 +452,91 @@ check("focus_rec.missing_file_zero_drift", len(drifts_m) == 0,
 
 del rec_missing, drifts_m
 
+# ── Staleness fixes (2026-07-30): provider + reconcilers must not freeze ──
+#
+# Bug found live: state_focus_mark then state_reconcile in the SAME server
+# session returned zero drift, because FocusTaskReconciler.declared() was a
+# snapshot frozen at load() time, and the provider's _doc (built via
+# JsonStateProvider.__new__ bypass) never reloaded either. Same disease as
+# the JsonStateProvider mtime-reload bug fixed in state_canon/provider.py,
+# but tasks_provider.py's own __new__-bypass sidestepped that fix entirely.
+
+import os
+import time
+
+from instances.tasks_provider import VsmStateProvider  # noqa: E402
+from state_canon.focus import FocusTracker  # noqa: E402
+from state_canon.server import StateRagServer  # noqa: E402
+
+# -- VsmStateProvider reloads tasks/sessions on mtime change --
+tmp9 = _tmp()
+vsm9 = _write_vsm(tmp9, content=FIXTURE_VSM_ZERO_DRIFT)
+provider9 = VsmStateProvider(vsm9)
+before = provider9.query("tasks")
+vsm9.write_text(FIXTURE_VSM_ZERO_DRIFT + '\ntask("NEW-ONE", priority=P1, agent=x, status=seeded) = {\n  what: "added after first read",\n  gate: "none",\n}\n')
+os.utime(vsm9, (time.time() + 1, time.time() + 1))
+after = provider9.query("tasks")
+check("staleness.provider_reloads_on_mtime_change", len(after) == len(before) + 1,
+      f"before={len(before)} after={len(after)}")
+check("staleness.provider_sees_new_task", any(t.get("id") == "NEW-ONE" for t in after), str(after))
+
+# -- TaskSessionReconciler._get_data() reloads on mtime change --
+tmp10 = _tmp()
+vsm10 = _write_vsm(tmp10, content=FIXTURE_VSM_ZERO_DRIFT)
+rec10 = TaskSessionReconciler(vsm10)
+count_before = len(rec10.declared())
+vsm10.write_text(FIXTURE_VSM_ZERO_DRIFT + '\ntask("NEW-TWO", priority=P1, agent=x, status=seeded) = {\n  what: "added after first read",\n  gate: "none",\n}\n')
+os.utime(vsm10, (time.time() + 1, time.time() + 1))
+count_after = len(rec10.declared())
+check("staleness.task_session_reconciler_reloads", count_after == count_before + 1,
+      f"before={count_before} after={count_after}")
+
+# -- FocusTaskReconciler.declared() prefers a bound live tracker, sees
+#    marks made AFTER construction (the exact bug: frozen focus_items) --
+tmp11 = _tmp()
+vsm11 = _write_vsm(tmp11, content=FIXTURE_VSM_ZERO_DRIFT)
+focus_path11 = tmp11 / "current_focus.json"
+tracker11 = FocusTracker(focus_path11)
+rec11 = FocusTaskReconciler(vsm11)
+check("staleness.declared_empty_before_bind", rec11.declared() == [])
+rec11.bind_focus_tracker(tracker11)
+check("staleness.declared_empty_before_mark", rec11.declared() == [])
+tracker11.mark("CURRENT-TASK", status="active")
+check("staleness.declared_sees_live_mark_after_construction",
+      any(e["ref"] == "CURRENT-TASK" for e in rec11.declared()), str(rec11.declared()))
+
+# -- explicit focus_items override still works when no tracker is bound
+#    (backward compat with existing test-injection pattern above) --
+rec11b = FocusTaskReconciler(vsm11, focus_items=[{"ref": "MANUAL", "status": "active"}])
+check("staleness.explicit_focus_items_still_works",
+      rec11b.declared() == [{"ref": "MANUAL", "status": "active"}])
+
+# -- end-to-end: StateRagServer auto-binds the tracker to any reconciler
+#    that exposes bind_focus_tracker, when constructed with focus_file, and
+#    state_reconcile (the actual MCP tool) reflects a mark made AFTER
+#    construction -- this is the exact scenario reproduced live against the
+#    real MCP server that first surfaced the bug (mark then reconcile in
+#    the same session returned zero drift). Needs a task with a CLOSED
+#    status so a genuine stale_focus_task_done drift is expected. --
+FIXTURE_VSM_ONE_DONE = """@vsm 1.0
+task("FINISHED-TASK", priority=P1, agent=ds, status=done) = {
+  what: "already done",
+}
+"""
+tmp12 = _tmp()
+vsm12 = _write_vsm(tmp12, content=FIXTURE_VSM_ONE_DONE)
+focus_path12 = tmp12 / "current_focus.json"
+provider12 = VsmStateProvider(vsm12)
+rec12 = FocusTaskReconciler(vsm12)
+server12 = StateRagServer(provider12, [rec12], focus_file=str(focus_path12))
+server12.focus.mark("FINISHED-TASK", status="active")  # mark AFTER server construction
+drift12 = server12.state_reconcile()
+check("staleness.state_reconcile_reflects_live_mark",
+      any(d["kind"] == "stale_focus_task_done" and d["subject"] == "FINISHED-TASK" for d in drift12),
+      str(drift12))
+
+del provider9, rec10, tracker11, rec11, rec11b, provider12, rec12, server12
+
 # ── Cleanup ───────────────────────────────────────────────────────────
 
 for d in _tmpdirs:

@@ -109,6 +109,16 @@ class StateRagServer:
         self.journal = (StateJournal(journal_db, stats_fn=journal_stats_fn, rag_fn=journal_rag_fn)
                         if journal_db else None)
         self.focus = FocusTracker(focus_file) if focus_file else None
+        if self.focus:
+            # Give any reconciler that wants live focus data the SAME tracker
+            # instance state_focus_mark/state_query('focus') read and write —
+            # not an independently re-derived path, which could silently point
+            # elsewhere. Duck-typed and optional: reconcilers that don't touch
+            # focus are unaffected.
+            for rec in self.reconcilers:
+                bind = getattr(rec, "bind_focus_tracker", None)
+                if bind:
+                    bind(self.focus)
 
     # ── tool implementations ──
     def state_onboard(self) -> str:
@@ -200,7 +210,7 @@ class StateRagServer:
         if method == "initialize":
             return {"protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "state-canon", "version": "0.8.0"}}
+                    "serverInfo": {"name": "state-canon", "version": "0.8.1"}}
         if method == "ping":
             return {}
         if method == "tools/list":
