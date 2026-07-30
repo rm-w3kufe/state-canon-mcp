@@ -3,7 +3,10 @@
 A focus file is a JSON array of {ref, status, note, started_at, updated_at}
 entries. One per agent (DS's ~/vsf/current_focus.json, bbh-lab's, etc).
 
-Write side (mark/close) — upsert by ref with atomic temp+rename.
+Write side (mark/close) — upsert by ref with atomic temp+rename, guarded by an
+flock() around the whole read-modify-write cycle so two near-simultaneous
+writers (e.g. two agents sharing one focus file) can't lose an update to each
+other — temp+rename alone prevents corruption, not lost writes.
 Read side (query) — list or filter entries.
 
 Same architectural role as StateJournal: an opt-in feature enabled via
@@ -12,12 +15,14 @@ instance can use it.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 class FocusTracker:
@@ -25,7 +30,20 @@ class FocusTracker:
 
     def __init__(self, path: str | Path):
         self.path = Path(path).resolve()
+        self._lock_path = self.path.with_suffix(self.path.suffix + ".lock")
         self._ensure_file()
+
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Exclusive lock spanning a full read-modify-write cycle. A separate
+        .lock file is used (not self.path itself) so it doesn't interfere with
+        the temp+rename atomic replace of the data file."""
+        with open(self._lock_path, "w") as lockfile:
+            fcntl.flock(lockfile, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lockfile, fcntl.LOCK_UN)
 
     def _ensure_file(self) -> None:
         """Create an empty focus file if it doesn't exist."""
@@ -73,29 +91,30 @@ class FocusTracker:
         Creates a new entry if ref doesn't exist, or updates status/note
         on an existing one. Always updates timestamp. Returns the entry.
         """
-        entries = self._load()
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._locked():
+            entries = self._load()
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        existing = [e for e in entries if e.get("ref") == ref]
-        if existing:
-            entry = existing[0]
-            if status is not None:
-                entry["status"] = status
-            if note is not None:
-                entry["note"] = note
-            entry["updated_at"] = now
-        else:
-            entry = {
-                "ref": ref,
-                "status": status or "active",
-                "note": note or "",
-                "started_at": now,
-                "updated_at": now,
-            }
-            entries.append(entry)
+            existing = [e for e in entries if e.get("ref") == ref]
+            if existing:
+                entry = existing[0]
+                if status is not None:
+                    entry["status"] = status
+                if note is not None:
+                    entry["note"] = note
+                entry["updated_at"] = now
+            else:
+                entry = {
+                    "ref": ref,
+                    "status": status or "active",
+                    "note": note or "",
+                    "started_at": now,
+                    "updated_at": now,
+                }
+                entries.append(entry)
 
-        self._save(entries)
-        return entry
+            self._save(entries)
+            return entry
 
     def close(self, ref: str, note: str | None = None) -> dict[str, Any]:
         """Mark a focus entry as done. Convenience wrapper around mark()."""

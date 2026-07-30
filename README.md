@@ -303,10 +303,11 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | Second living instance (SQLite over a real production canon) | ✅ 14/14 structural checks; digest policy born from a real 44k→12k lesson |
 | Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
-| Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero on non-BBH data |
+| Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero when the instance-specific `JOURNAL_STATS_FN`/`JOURNAL_RAG_FN` hooks aren't supplied |
 | VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 52/52 checks (VSM parser + TaskSessionReconciler catches stale tasks + FocusTaskReconciler catches stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
 | End-to-end smoke (subprocess stdio) | ✅ 27/27 checks — spawns real MCP server with `--instance + --focus + --journal`, sends JSON-RPC over stdio, asserts reconcile patterns, focus mark/close, journal persist, onboard digest |
 | FreshnessReconciler | ✅ `state_canon/freshness.py` — generic core reconciler: flags missing or stale files by mtime vs max_age. Two drift kinds (`missing`, `stale`). Domain-configurable. Stdlib-only, 24/24 checks. |
+| Provider-contract safeguard (state_verify vs declared/observed) | ✅ `state_verify` cross-checks the provider against any registered reconciler's `observe()` and surfaces a warning on disagreement; 22/22 checks (`tests/test_housekeeping_fixes.py`, also covers duplicate-key drift detection, focus.py concurrent-write locking, JsonStateProvider mtime reload + unknown-filter parity with SqliteStateProvider, digest.py fallback labeling) |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
 | Realistic corpus + published numbers | ⬜ after validation |

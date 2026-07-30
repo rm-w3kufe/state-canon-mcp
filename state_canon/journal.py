@@ -17,12 +17,15 @@ Schema:
   )
 
 Domain scope: `drift_count`/`drifts` come from whatever reconcilers the
-server was launched with, so they work for ANY instance. `production_findings`
-/`by_severity`/`by_target`/`by_status`/`rag_accuracy` assume a BBH-shaped
-`findings` + `rag_feedback` table (this module's origin, bbh-lab) — on any
-other domain those columns just stay zeroed (`_gather_stats`/`_rag_stats`
-degrade gracefully when the tables don't exist), so the journal is still
-useful for drift-tracking alone.
+server was launched with, so they work for ANY instance — fully generic,
+no configuration needed. The other columns (`production_findings`/
+`by_severity`/`by_target`/`by_status`/`rag_accuracy`/`rag_feedback_total`)
+are instance-specific stats with no fixed shape the core can assume — they
+stay zeroed unless the consuming instance supplies `stats_fn`/`rag_fn`
+callables at construction (see `instances/` for an example wiring one up
+against a domain-specific schema). Keeping domain-specific schema
+assumptions out of this shared file is deliberate: any instance's own
+data shape belongs in that instance's own module, not here.
 
 Usage:
   journal = StateJournal("/path/to/some.db")
@@ -30,13 +33,16 @@ Usage:
   print(journal.diff())                    # last two snapshots
   print(journal.history(limit=5))          # recent snapshots
   print(journal.trend(field="production_findings"))  # over time
+
+  # with instance-specific stats:
+  journal = StateJournal("/path/to/some.db", stats_fn=my_stats, rag_fn=my_rag)
 """
 from __future__ import annotations
 
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 SCHEMA = """
@@ -56,20 +62,22 @@ CREATE TABLE IF NOT EXISTS state_journal (
 );
 """
 
-# bbh-lab's own test-target exclusion list (mirrors instances/bbh_findings.py).
-# Only matters when the DB actually has a BBH-shaped `findings` table.
-_BBH_TEST_TARGETS = frozenset({
-    "vple", "vple-smoke", "vpble",
-    "test", "test-c1", "full-test", "test-target",
-    "smoke-test", "smoke-test-trans",
-})
+StatsFn = Callable[[], dict[str, Any]]
 
 
 class StateJournal:
     """Append-only journal of state snapshots over time."""
 
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path,
+                 stats_fn: StatsFn | None = None,
+                 rag_fn: StatsFn | None = None):
+        """`stats_fn`/`rag_fn` are optional zero-arg callables an instance can
+        supply to populate the instance-specific columns (see module docstring).
+        Left unset, those columns just stay zeroed — the journal remains fully
+        useful for drift tracking alone."""
         self.db_path = str(Path(db_path).resolve())
+        self._stats_fn = stats_fn
+        self._rag_fn = rag_fn
         self._init_schema()
 
     def _conn(self) -> sqlite3.Connection:
@@ -88,8 +96,8 @@ class StateJournal:
              snapshot_type: str = "manual",
              drifts: list[dict] | None = None) -> int:
         """Save a snapshot of current state. Returns the new row id."""
-        stats = self._gather_stats()
-        rag = self._rag_stats()
+        stats = self._stats_fn() if self._stats_fn else {}
+        rag = self._rag_fn() if self._rag_fn else {}
         sev_json = json.dumps(stats.get("by_severity", {}))
         tgt_json = json.dumps(stats.get("by_target", {}))
         sts_json = json.dumps(stats.get("by_status", {}))
@@ -109,70 +117,6 @@ class StateJournal:
                  rag.get("accuracy"), rag.get("total")),
             )
             return cur.lastrowid
-
-    def _gather_stats(self) -> dict[str, Any]:
-        """Query a BBH-shaped `findings` table for aggregate stats, if present.
-
-        Returns all-zero stats (not an error) when the table doesn't exist —
-        any non-BBH instance still gets a working journal for drift tracking,
-        just without the findings-specific breakdown.
-        """
-        empty = {"production_findings": 0, "by_severity": {}, "by_target": {}, "by_status": {}}
-        ph = ",".join("?" for _ in _BBH_TEST_TARGETS)
-        params = list(_BBH_TEST_TARGETS)
-
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            prod_total = conn.execute(
-                f"SELECT COUNT(*) AS c FROM findings WHERE environment='production' AND target NOT IN ({ph})",
-                params,
-            ).fetchone()["c"]
-
-            by_severity = conn.execute(
-                f"SELECT severity, COUNT(*) AS c FROM findings WHERE environment='production' AND target NOT IN ({ph}) GROUP BY severity",
-                params,
-            ).fetchall()
-            sev = {r["severity"]: r["c"] for r in by_severity}
-
-            by_target = conn.execute(
-                f"SELECT target, COUNT(*) AS c FROM findings WHERE environment='production' AND target NOT IN ({ph}) GROUP BY target ORDER BY c DESC",
-                params,
-            ).fetchall()
-            tgt = {r["target"]: r["c"] for r in by_target}
-
-            by_status = conn.execute(
-                f"SELECT lifecycle_status, COUNT(*) AS c FROM findings WHERE environment='production' AND target NOT IN ({ph}) GROUP BY lifecycle_status",
-                params,
-            ).fetchall()
-            sts = {r["lifecycle_status"]: r["c"] for r in by_status}
-
-            return {
-                "production_findings": prod_total,
-                "by_severity": sev,
-                "by_target": tgt,
-                "by_status": sts,
-            }
-        except sqlite3.OperationalError:
-            return empty
-        finally:
-            conn.close()
-
-    def _rag_stats(self) -> dict[str, Any]:
-        """Query RAG feedback accuracy, if a `rag_feedback` table exists."""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            total = conn.execute("SELECT COUNT(*) AS c FROM rag_feedback").fetchone()["c"]
-            correct = conn.execute(
-                "SELECT COUNT(*) AS c FROM rag_feedback WHERE correct=1",
-            ).fetchone()["c"]
-            conn.close()
-            return {
-                "accuracy": round(correct / total, 4) if total > 0 else 0.0,
-                "total": total,
-            }
-        except Exception:
-            return {"accuracy": 0.0, "total": 0}
 
     # ── diff ──
 

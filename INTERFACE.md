@@ -13,6 +13,30 @@ The core is domain-agnostic; a user plugs in their own state:
 - **`DigestAssembler`**: registered domains + a policy (what matters) → the compact onboard digest
 - **MCP adapter**: thin wrapper exposing the tools/resources above over provider + reconciler
 
+## Provider contract — the one rule that must hold
+
+**Your `StateProvider` MUST represent the reconciled canon (what `observe()` returns), never the
+declared/config side alone.** `state_verify` and `state_query` read `self.provider` directly — they do
+not go through the `Reconciler` (only `state_reconcile` and the onboard digest compute `declared() vs
+observe()` live). If a provider is wired to declared/config state instead, `state_verify` silently
+checks claims against *aspiration*, not reality — a real "worker is running" can come back `holds:
+false` with zero error signal, because the provider is comparing against what was supposed to happen,
+not what actually did.
+
+Every reference instance below gets this right (the provider is the reconciled product — e.g.
+`sqlite_ops.py`'s DB is written by the reconciliation timers themselves, `microstack.py`'s provider
+reads `synthesized/state.json`, not the raw manifest). Getting it wrong is easy for a *new* instance,
+because nothing stops a `load()` from wiring `provider = JsonStateProvider("declared_config.json")` —
+it will run, return results, and never look wrong.
+
+**A structural safety net exists but is not a substitute for getting this right**: when a `Reconciler`
+is registered for a domain, `state_verify` cross-checks the provider's data for that domain against the
+reconciler's own `observe()` (matched by `key`, compared on `status_field`) and adds a `"warning"` field
+to the response if they disagree. This catches the common case — declared/observed genuinely diverge —
+but it's a diagnostic aid, not a guarantee: a domain with no registered reconciler gets no cross-check
+at all, and `state_query` never cross-checks (it's the cheap, no-ground-truth-promised tool by design;
+`state_verify` is the one that promises "don't trust the report").
+
 ## Reference instances (the abstraction has ≥3 instances from day one — proves it generalizes)
 
 | instance | file | pattern |
@@ -89,6 +113,15 @@ Both opt-in flags share the same contract:
 
 With two real implementations, the pattern is proven — a third opt-in side system (e.g. an alarm
 threshold tracker, an experiment log, a calibration ledger) would follow the same structure.
+
+**Journal stats are pluggable, same as `DIGEST_POLICY`.** `StateJournal` tracks `drift_count`/`drifts`
+generically (from whatever reconcilers the server was launched with), but the other snapshot columns
+(`production_findings`, `by_severity`, `by_target`, `by_status`, `rag_accuracy`, `rag_feedback_total`)
+have no fixed shape the core can assume — they stay zeroed unless your instance module exposes
+`JOURNAL_STATS_FN` / `JOURNAL_RAG_FN` (zero-arg callables returning the stats dicts), fetched the same
+way as `DIGEST_POLICY`: `getattr(mod, "JOURNAL_STATS_FN", None)`. This keeps domain-specific schema
+knowledge (e.g. a `findings` table with particular columns) entirely inside the instance that actually
+has that schema, not in the shared core.
 
 ## Roadmap instance: version control (Git first, VCS-agnostic by construction)
 

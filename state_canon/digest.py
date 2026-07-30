@@ -28,8 +28,16 @@ def _fmt_record(r: dict, fields: list[str] | None = None) -> str:
         label = str(r.get(fields[0], "?"))
         rest = [f"{k}={r[k]}" for k in fields[1:] if r.get(k) is not None]
         return label + (" [" + " ".join(rest) + "]" if rest else "")
-    name = next((str(r[k]) for k in ("name", "id", "rule", "value") if k in r), "?")
-    skip = {"name", "id", "value", "evidence"}
+    conventional = next(((k, r[k]) for k in ("name", "id", "rule", "value") if k in r), None)
+    if conventional is not None:
+        skip = {"name", "id", "value", "evidence"}
+        name = str(conventional[1])
+    else:
+        # No conventional identifier field present — fall back to the record's
+        # first field instead of a bare, uninformative "?".
+        first = next(iter(r.items()), None)
+        name = f"{first[0]}={first[1]}" if first else "?"
+        skip = {first[0]} if first else set()
     rest = [f"{k}={v}" for k, v in r.items()
             if k not in skip and not isinstance(v, (dict, list)) and v is not None]
     return name + (" [" + " ".join(rest) + "]" if rest else "")

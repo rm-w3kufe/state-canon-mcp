@@ -7,6 +7,7 @@ are pluggable callables.
 Drift kinds:
   declared_but_missing — declared active, not observed running
   orphan               — observed running, not declared
+  duplicate_key        — declared()/observe() has the same key twice (last wins, silently)
   rule_violation       — a registered rule check failed
 """
 from __future__ import annotations
@@ -48,10 +49,28 @@ class Reconciler(ABC):
     def _is_active(self, record: dict | None) -> bool:
         return record is not None and str(record.get(self.status_field, "")).lower() in self.active_values
 
+    def _index(self, records: list[dict], side: str) -> tuple[dict, list[Drift]]:
+        """Build a key -> record index, reporting duplicate keys instead of
+        silently overwriting (last-wins) — a tool built to catch inconsistency
+        shouldn't itself hide one."""
+        indexed: dict[Any, dict] = {}
+        dup_drifts: list[Drift] = []
+        for r in records:
+            k = r[self.key]
+            if k in indexed:
+                dup_drifts.append(Drift(
+                    "duplicate_key", str(k),
+                    f"{side} data has {self.key}={k!r} more than once — only the "
+                    f"last record is used, earlier ones are silently dropped",
+                    {"kept": r, "side": side},
+                ))
+            indexed[k] = r
+        return indexed, dup_drifts
+
     def diff(self) -> list[Drift]:
-        dec = {r[self.key]: r for r in self.declared()}
-        obs = {r[self.key]: r for r in self.observe()}
-        drifts: list[Drift] = []
+        dec, dec_dup_drifts = self._index(self.declared(), "declared")
+        obs, obs_dup_drifts = self._index(self.observe(), "observed")
+        drifts: list[Drift] = [*dec_dup_drifts, *obs_dup_drifts]
 
         for name, d in dec.items():
             if self._is_active(d) and not self._is_active(obs.get(name)):

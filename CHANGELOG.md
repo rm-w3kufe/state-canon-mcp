@@ -5,6 +5,57 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.8.0] — 2026-07-30
+
+Housekeeping round from an external code review (6 findings) plus the most severe
+finding of the review, found via a live demo rather than code reading. All fixes have
+regression tests in `tests/test_housekeeping_fixes.py` (22/22 checks).
+
+### Fixed
+- **`state_verify` silently bypassing the Reconciler (most severe finding)** —
+  `state_verify`/`state_query` call `self.provider` directly and never consulted a
+  registered `Reconciler`. If a provider was wired to declared/config state instead of
+  the reconciled canon, `state_verify` would silently check claims against aspiration,
+  not reality, with no error signal. Fixed with a structural safeguard: when a
+  `Reconciler` is registered for the queried domain, `state_verify` now cross-checks
+  the provider's data against `reconciler.observe()` and adds a `"warning"` field to
+  the response on disagreement. See INTERFACE.md's new "Provider contract" section for
+  the underlying rule this can't fully substitute for.
+- `reconcile.py`'s base `Reconciler.diff()` silently dropped duplicate keys in
+  `declared()`/`observe()` (last-wins, no signal) — now emits a `duplicate_key` Drift.
+- `focus.py`'s `FocusTracker.mark()` had a lost-update race: two near-simultaneous
+  callers could both read-modify-write and the second would silently clobber the
+  first's update (atomic temp+rename protects against corruption, not against this).
+  Fixed with an `flock()`-guarded critical section around the whole read-modify-write
+  cycle. `journal.py` was reviewed for the same pattern and found NOT vulnerable —
+  `mark()` is a pure append (autoincrement PK), not a read-modify-write.
+- `JsonStateProvider.query()` silently no-matched on an unknown filter field while
+  `SqliteStateProvider.query()` raised `ValueError` for the same case — inconsistent
+  behavior depending on backend. Unified: `JsonStateProvider` now raises `ValueError`
+  when a filter key isn't present in any record of a non-empty domain.
+- `JsonStateProvider` loaded its JSON document once in `__init__` and never reloaded —
+  a long-lived stdio server session would serve a stale snapshot forever. Now reloads
+  on mtime change (checked once per query, not unconditionally). Instances that
+  construct a `JsonStateProvider` via `__new__` and populate `_doc` themselves (e.g.
+  `tasks_provider.py`, whose data comes from a VSM-file parse, not `json.loads`) are
+  unaffected — reload-on-change only activates for the standard `__init__` path.
+- `digest.py`'s `_fmt_record` fell back to a bare, uninformative `"?"` label when a
+  record had none of the conventional identifier fields (`name`/`id`/`rule`/`value`).
+  Now falls back to the record's first available `key=value` pair instead.
+
+### Changed — may require action if you use `--journal`
+- `journal.py` no longer hardcodes a BBH-shaped `findings`/`rag_feedback` schema in the
+  shared core (`_BBH_TEST_TARGETS`, `_gather_stats`, `_rag_stats` are gone). Domain-
+  specific schema assumptions don't belong in the public tool's core — same principle
+  as `DIGEST_POLICY` staying instance-side. `StateJournal` now accepts optional
+  `stats_fn`/`rag_fn` callables; an `--instance` module can supply them via module-level
+  `JOURNAL_STATS_FN`/`JOURNAL_RAG_FN` (fetched the same way as `DIGEST_POLICY`). Left
+  unset, the instance-specific journal columns just stay zeroed — drift tracking still
+  works fully. **If your instance was relying on the old auto-detected BBH stats**, add
+  `JOURNAL_STATS_FN`/`JOURNAL_RAG_FN` to your module (see INTERFACE.md's "Opt-in side
+  systems" section for the pattern; `instances/` in your own private fork is the
+  intended home for this, not the shared repo).
+
 ## [0.7.0] — 2026-07-27
 
 ### Added

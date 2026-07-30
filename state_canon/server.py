@@ -102,11 +102,12 @@ RESOURCES = [
 class StateRagServer:
     def __init__(self, provider: StateProvider, reconcilers: list[Reconciler] | None = None,
                  digest_policy: dict | None = None, journal_db: str | None = None,
-                 focus_file: str | None = None):
+                 focus_file: str | None = None, journal_stats_fn=None, journal_rag_fn=None):
         self.provider = provider
         self.reconcilers = reconcilers or []
         self.digest_policy = digest_policy
-        self.journal = StateJournal(journal_db) if journal_db else None
+        self.journal = (StateJournal(journal_db, stats_fn=journal_stats_fn, rag_fn=journal_rag_fn)
+                        if journal_db else None)
         self.focus = FocusTracker(focus_file) if focus_file else None
 
     # ── tool implementations ──
@@ -123,15 +124,48 @@ class StateRagServer:
     def state_verify(self, domain: str, expect: dict, filter: dict | None = None) -> dict:
         records = self.provider.query(domain, filter)
         if not records:
-            return {"holds": False, "reason": "no_records_matched", "filter": filter}
-        mismatches = [
-            {"record": r, "field": k, "expected": v, "actual": r.get(k)}
-            for r in records for k, v in expect.items() if r.get(k) != v
-        ]
-        return {"holds": not mismatches,
-                "checked": len(records),
-                "mismatches": mismatches,
-                "evidence": records if not mismatches else None}
+            result = {"holds": False, "reason": "no_records_matched", "filter": filter}
+        else:
+            mismatches = [
+                {"record": r, "field": k, "expected": v, "actual": r.get(k)}
+                for r in records for k, v in expect.items() if r.get(k) != v
+            ]
+            result = {"holds": not mismatches,
+                      "checked": len(records),
+                      "mismatches": mismatches,
+                      "evidence": records if not mismatches else None}
+        warning = self._reconciler_mismatch_warning(domain)
+        if warning:
+            result["warning"] = warning
+        return result
+
+    def _reconciler_mismatch_warning(self, domain: str) -> str | None:
+        """If a reconciler is registered for `domain`, cross-check the provider's
+        data against reconciler.observe(). Disagreement is the exact symptom of the
+        provider being wired to declared/config state instead of the reconciled
+        canon — which silently inverts what state_verify is supposed to guarantee
+        (see INTERFACE.md 'Provider contract'). Best-effort: any error while
+        cross-checking is swallowed, since this is a diagnostic aid, not a gate."""
+        rec = next((r for r in self.reconcilers if getattr(r, "domain", None) == domain), None)
+        if rec is None:
+            return None
+        try:
+            observed = {o[rec.key]: o for o in rec.observe() if rec.key in o}
+            provided = {p[rec.key]: p for p in self.provider.query(domain) if rec.key in p}
+        except Exception:
+            return None
+        disagreements = sorted(
+            key for key in (set(observed) & set(provided))
+            if str(observed[key].get(rec.status_field, "")).lower()
+               != str(provided[key].get(rec.status_field, "")).lower()
+        )
+        if not disagreements:
+            return None
+        return (f"provider data for domain '{domain}' disagrees with the registered "
+                f"reconciler's observe() on '{rec.status_field}' for {len(disagreements)} "
+                f"record(s) ({disagreements[:5]}) — the provider may be wired to declared/"
+                f"config state instead of the reconciled canon; results may not reflect "
+                f"ground truth")
 
     def state_reconcile(self) -> list[dict]:
         return [d.as_dict() for rec in self.reconcilers for d in rec.diff()]
@@ -166,7 +200,7 @@ class StateRagServer:
         if method == "initialize":
             return {"protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "state-canon", "version": "0.6.1"}}
+                    "serverInfo": {"name": "state-canon", "version": "0.8.0"}}
         if method == "ping":
             return {}
         if method == "tools/list":
@@ -268,8 +302,14 @@ class StateRagServer:
 
 
 def _load_instance_file(module_path, arg: str):
-    """Load an instance module (a .py with load(arg) [+ DIGEST_POLICY]) →
-    (provider, reconcilers, digest_policy). This is the bring-your-own hook."""
+    """Load an instance module (a .py with load(arg) [+ DIGEST_POLICY,
+    JOURNAL_STATS_FN, JOURNAL_RAG_FN]) → (provider, reconcilers, digest_policy,
+    journal_stats_fn, journal_rag_fn). This is the bring-your-own hook.
+
+    JOURNAL_STATS_FN/JOURNAL_RAG_FN let an instance populate StateJournal's
+    instance-specific columns (production_findings, rag_accuracy, etc.) without
+    that schema knowledge living in the shared journal.py core — same pattern
+    as DIGEST_POLICY, just for the journal instead of the digest."""
     import importlib.util
     import sys
     from pathlib import Path
@@ -281,7 +321,8 @@ def _load_instance_file(module_path, arg: str):
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     provider, reconcilers = mod.load(arg)
-    return provider, reconcilers, getattr(mod, "DIGEST_POLICY", None)
+    return (provider, reconcilers, getattr(mod, "DIGEST_POLICY", None),
+            getattr(mod, "JOURNAL_STATS_FN", None), getattr(mod, "JOURNAL_RAG_FN", None))
 
 
 def main() -> None:
@@ -302,11 +343,13 @@ def main() -> None:
                          "persisting per-agent focus entries to PATH (JSON)")
     args = ap.parse_args()
 
+    journal_stats_fn = journal_rag_fn = None
     if args.instance:
         module_path, _, arg = args.instance.rpartition(":")
-        provider, reconcilers, policy = _load_instance_file(module_path, arg)
+        provider, reconcilers, policy, journal_stats_fn, journal_rag_fn = _load_instance_file(module_path, arg)
     elif args.microstack:
-        provider, reconcilers, policy = _load_instance_file(instances_dir / "microstack.py", args.microstack)
+        provider, reconcilers, policy, journal_stats_fn, journal_rag_fn = _load_instance_file(
+            instances_dir / "microstack.py", args.microstack)
     elif args.git:
         from .git_provider import DIGEST_POLICY as git_policy
         from .git_provider import load as git_load
@@ -320,7 +363,8 @@ def main() -> None:
     else:
         ap.error("need one of --state, --sqlite, --git, --microstack, --instance")
 
-    StateRagServer(provider, reconcilers, policy, journal_db=args.journal, focus_file=args.focus).serve()
+    StateRagServer(provider, reconcilers, policy, journal_db=args.journal, focus_file=args.focus,
+                   journal_stats_fn=journal_stats_fn, journal_rag_fn=journal_rag_fn).serve()
 
 
 if __name__ == "__main__":
