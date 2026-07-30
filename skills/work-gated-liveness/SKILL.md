@@ -10,6 +10,12 @@ A liveness signal emitted from a timer loop **independent of the work** is theat
 healthy while the actual work is dead. The heartbeat must come from the work path, after a
 verified successful operation.
 
+Related but distinct from **loud-death**: this skill is about how a service *signals it's alive*
+(gate the heartbeat on real work); loud-death is about how a service *dies* (exit loudly, and only
+on real failure). The same "quiet zombie" scar shows up in both because they're two halves of one
+failure mode — a process that's up but not working needs BOTH a heartbeat that stops (this skill)
+and, if it can detect its own failure, a loud exit (loud-death) — neither alone is the full fix.
+
 ## How
 - **Producers / tickers:** heartbeat *after* a successful work cycle (publish confirmed, batch
   committed). Work failed → no heartbeat.

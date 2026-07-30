@@ -25,3 +25,10 @@ against (`state_verify`, `state_reconcile`). They work without it, but verificat
 | [logical-gates-not-time-estimates](./logical-gates-not-time-estimates/SKILL.md) | sequence by preconditions, never by duration guesses |
 | [framed-prompts](./framed-prompts/SKILL.md) | the handoff is a contract, not a conversation |
 | [system-holds-the-pen](./system-holds-the-pen/SKILL.md) | managed surfaces are written by the system; hand-edits are drift |
+
+**Why framed-prompts is in this set:** the other eight are operational disciplines (deploy, incident,
+alarm, rollout — properties of a *running system*). framed-prompts is one level up — it's about how a
+*task* crosses the boundary between agents, before any of those disciplines get applied. It belongs here
+because it's the same kind of thing: a rule earned from a real incident, not a generic best practice —
+several of the scars in the other eight skills trace back to a handoff that wasn't framed (the canon
+source that wasn't named, the "do NOT widen yet" that wasn't said explicitly).
