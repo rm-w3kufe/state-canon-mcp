@@ -5,6 +5,31 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.9.0] — 2026-07-31
+
+### Added
+- **`SshSqliteStateProvider`** (`state_canon/ssh_sqlite_provider.py`) — the remote-mode
+  pattern INTERFACE.md's "Remote mode" section already described ("our production canon
+  lives on a server two SSH hops away from where the agent runs") but had no shipped
+  implementation for. Same domain/filter/schema contract as `SqliteStateProvider`, but
+  each query runs over `ssh host sqlite3 -readonly -json` instead of a local
+  `sqlite3.connect()` — read-only by construction, no caching (every query is a real
+  round-trip; wrap it if you need one). Plus `instances/ssh_sqlite_ops.py`, the
+  remote-state sibling of the existing `sqlite_ops.py` reference instance (same
+  domain/digest-policy mapping — the two are meant to be interchangeable depending on
+  where your MCP server happens to run relative to the DB).
+- Found and fixed live, while first wiring this up against a real remote DB: SSH
+  re-joins and re-parses its trailing arguments on the remote shell, so unquoted SQL
+  containing shell metacharacters (e.g. `PRAGMA table_info(services)`'s parens) broke —
+  fixed with `shlex.quote()` per remote-side token. Second, separate bug: the CLI's own
+  `--instance MODULE.py:ARG` parsing splits on the *last* colon (`rpartition`), so an
+  scp-style `user@host:/path` arg (which embeds its own colon) silently corrupted —
+  `ssh_sqlite_ops.py`'s arg syntax is `user@host,/path` (comma) instead, documented in
+  both the module docstring and the `--instance` usage line.
+- 17 new tests (`tests/test_ssh_sqlite_provider.py`), all mocked at the `subprocess.run`
+  boundary — no network required to run the suite; the shell-metacharacter test locks
+  in the parens-quoting fix specifically.
+
 ## [0.8.1] — 2026-07-30
 
 ### Fixed

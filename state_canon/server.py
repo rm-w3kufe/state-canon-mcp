@@ -210,7 +210,7 @@ class StateRagServer:
         if method == "initialize":
             return {"protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "state-canon", "version": "0.8.1"}}
+                    "serverInfo": {"name": "state-canon", "version": "0.9.0"}}
         if method == "ping":
             return {}
         if method == "tools/list":
