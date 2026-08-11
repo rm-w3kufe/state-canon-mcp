@@ -145,6 +145,50 @@ check("parse.meta_lines",
       data["meta"]["lines"] == len(FIXTURE_VSM.splitlines()),
       f"got {data['meta']['lines']}")
 
+# ── Parser: braces inside string literals do NOT break block depth ────
+# Regression for BOOT-RECONCILE-2026-08-10: a literal '{' inside a quoted
+# value (here: a note describing regex like `ident = { sin paréntesis`)
+# must not inflate the naive block-depth counter, or the collector never
+# reaches 0 and every block after it — including real task() blocks — is
+# silently swallowed into the wrong record (dropped DASHAI-S4-LAB-EVAL and
+# VSF-FEED-SPEC-REVIEW from the census until 2026-08-10).
+
+FIXTURE_BRACE_IN_STRING = """@vsm 1.0
+session("2026-08-05-ds-worklist-vsl") = {
+  summary: "session with a quoted brace",
+  note:     "regex de bloques (ident = { sin paréntesis), strings inflando conteo",
+  next:     "done",
+}
+
+task("AFTER-QUOTED-BRACE", priority=P1, agent=ds, status=open) = {
+  what: "must survive the quoted '{' above",
+  gate: "none",
+}
+
+task("SECOND-AFTER", priority=P2, agent=ds, status=done) = {
+  what: "also survives",
+}
+"""
+tmp_brace = _tmp()
+f_brace = _write_vsm(tmp_brace, content=FIXTURE_BRACE_IN_STRING)
+data_brace = parse_vsm_file(f_brace)
+check("parse.brace_in_string.tasks_count",
+      data_brace["meta"]["tasks_count"] == 2,
+      f"got {data_brace['meta']['tasks_count']} (naive counting would give 0)")
+check("parse.brace_in_string.sessions_count",
+      data_brace["meta"]["sessions_count"] == 1,
+      f"got {data_brace['meta']['sessions_count']}")
+after_ids = {t["id"] for t in data_brace["tasks"]}
+check("parse.brace_in_string.after_survives",
+      "AFTER-QUOTED-BRACE" in after_ids and "SECOND-AFTER" in after_ids,
+      f"got {after_ids}")
+after_first = next(t for t in data_brace["tasks"] if t["id"] == "AFTER-QUOTED-BRACE")
+check("parse.brace_in_string.status",
+      after_first.get("status") == "open",
+      str(after_first.get("status")))
+
+del tmp_brace, f_brace, data_brace
+
 tasks = {t["id"]: t for t in data["tasks"]}
 sessions = {s["id"]: s for s in data["sessions"]}
 

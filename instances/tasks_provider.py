@@ -236,6 +236,47 @@ def _parse_kv_continuation(lines: list[str]) -> dict[str, Any]:
     return result
 
 
+def _structural_brace_delta(line: str, in_string: bool) -> tuple[int, bool]:
+    """Count structural braces in a line, ignoring those inside string literals
+    and ``//`` comments. Returns ``(delta, in_string)`` where ``in_string`` is
+    the quote state at end of line (VSL double-quoted strings may span lines).
+
+    NOT ``line.count("{") - line.count("}")``: brace counting must be
+    string-aware or a literal ``{`` quoted inside a body value (real case:
+    TASKS.vsm session 2026-08-05-ds-worklist-vsl, note line quoting
+    ``ident = { sin paréntesis``) inflates block depth, the close-brace
+    collector never reaches 0, and everything after that point — including
+    real task() blocks — is silently swallowed into the wrong record. That
+    exact bug dropped DASHAI-S4-LAB-EVAL and VSF-FEED-SPEC-REVIEW from the
+    parsed census until 2026-08-10 (BOOT-RECONCILE-2026-08-10).
+    """
+    delta = 0
+    n = len(line)
+    i = 0
+    while i < n:
+        ch = line[i]
+        if in_string:
+            if ch == "\\":
+                i += 2  # skip escaped char (same rule as _KV_PAIR)
+                continue
+            if ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and line[i + 1] == "/":
+            break  # rest of line is a comment
+        if ch == "{":
+            delta += 1
+        elif ch == "}":
+            delta -= 1
+        i += 1
+    return delta, in_string
+
+
 def _parse_resolved_list(raw: Any) -> list[str]:
     """Parse a ``resolved: [...]`` value into a list of task references.
 
@@ -339,12 +380,17 @@ def parse_vsm_file(path: str | Path) -> dict[str, Any]:
             i += 1
             body_lines = []
             if has_open_brace:
-                # Collect until closing brace
+                # Collect until closing brace. Brace depth is structural only —
+                # braces inside double-quoted strings and // comments must not
+                # count (see _structural_brace_delta; naive counting swallowed
+                # every block after a quoted '{' in TASKS.vsm).
                 brace_depth = 1
+                in_string = False
                 while i < len(lines) and brace_depth > 0:
                     cl = lines[i]
                     body_lines.append(cl)
-                    brace_depth += cl.count("{") - cl.count("}")
+                    delta, in_string = _structural_brace_delta(cl, in_string)
+                    brace_depth += delta
                     if brace_depth <= 0:
                         # Remove the closing brace line (or its leftover part)
                         # Actually the whole line is included; we'll strip braces later
