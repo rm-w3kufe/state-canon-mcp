@@ -28,9 +28,17 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "vendor"))
 
 from state_canon.provider import JsonStateProvider, StateProvider
 from state_canon.reconcile import Drift, Reconciler
+
+# The one shared structural line-reader (VSLLINE-SHARED-TOKENIZER-2026-08-11).
+# vendored byte-identical from vsf's scripts/vsl/vslline.py, pinned by
+# checks/vslline-manifest-valid. This module's own hand-rolled brace
+# counter (_structural_brace_delta, below) now delegates here so the
+# P2/P4 bug class cannot diverge per-parser again.
+import vslline as _vslline
 
 # ── VSM block types and their open-like statuses ──────────────────────
 # The reconciler checks these against session resolved:[] references.
@@ -242,9 +250,13 @@ def _parse_kv_continuation(lines: list[str]) -> dict[str, Any]:
 
 
 def _structural_brace_delta(line: str, in_string: bool) -> tuple[int, bool]:
-    """Count structural braces in a line, ignoring those inside string literals
-    and ``//`` comments. Returns ``(delta, in_string)`` where ``in_string`` is
-    the quote state at end of line (VSL double-quoted strings may span lines).
+    """Structural brace delta, string/comment-aware, via the shared reader.
+
+    Since VSLLINE-SHARED-TOKENIZER-2026-08-11 this is ONE LINE of
+    delegation: vslline.scan_line blanks string bodies and comment tails
+    (preserving columns), and vslline.brace_delta counts what remains.
+    The correct behaviour was previously imitated here by hand (and
+    diverged from tokenizer.py's); now it IS tokenizer.py's behaviour.
 
     NOT ``line.count("{") - line.count("}")``: brace counting must be
     string-aware or a literal ``{`` quoted inside a body value (real case:
@@ -255,31 +267,8 @@ def _structural_brace_delta(line: str, in_string: bool) -> tuple[int, bool]:
     exact bug dropped DASHAI-S4-LAB-EVAL and VSF-FEED-SPEC-REVIEW from the
     parsed census until 2026-08-10 (BOOT-RECONCILE-2026-08-10).
     """
-    delta = 0
-    n = len(line)
-    i = 0
-    while i < n:
-        ch = line[i]
-        if in_string:
-            if ch == "\\":
-                i += 2  # skip escaped char (same rule as _KV_PAIR)
-                continue
-            if ch == '"':
-                in_string = False
-            i += 1
-            continue
-        if ch == '"':
-            in_string = True
-            i += 1
-            continue
-        if ch == "/" and i + 1 < n and line[i + 1] == "/":
-            break  # rest of line is a comment
-        if ch == "{":
-            delta += 1
-        elif ch == "}":
-            delta -= 1
-        i += 1
-    return delta, in_string
+    code, in_string = _vslline.scan_line(line, in_string)
+    return _vslline.brace_delta(code), in_string
 
 
 def _parse_resolved_list(raw: Any) -> list[str]:
