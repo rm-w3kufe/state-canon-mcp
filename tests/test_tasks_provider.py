@@ -189,6 +189,41 @@ check("parse.brace_in_string.status",
 
 del tmp_brace, f_brace, data_brace
 
+# ── Parser: indented block definitions (P4, BOOT-RECONCILE-2026-08-10) ──
+# TASKS.vsm may contain a task()/session() definition that starts with
+# leading whitespace. pre-P4 the _BLOCK_START regex anchored at column 0,
+# silently hiding any indented definition from the census — the same
+# failure class as the quoted-'{' P2 bug, one level down (the fixture
+# mirrors checks/tasks-census-converge's negative control).
+
+FIXTURE_INDENTED = """@vsm 1.0
+task("VISIBLE-TO-ONBOARD", priority=P1, agent=ds, status=open) = {
+  what: "seen by column-0 parser",
+}
+  task("INDENTED-ONLY-ONBOARD", priority=P2, agent=ds, status=open) = {
+    what: "onboard.sh tolerates leading whitespace; tasks_provider now does too",
+  }
+"""
+tmp_ind = _tmp()
+f_ind = _write_vsm(tmp_ind, content=FIXTURE_INDENTED)
+data_ind = parse_vsm_file(f_ind)
+ind_ids = {t["id"] for t in data_ind["tasks"]}
+check("parse.indented_block.tasks_count",
+      data_ind["meta"]["tasks_count"] == 2,
+      f"got {data_ind['meta']['tasks_count']} (col-0 regex gives 1)")
+check("parse.indented_block.id_present",
+      "INDENTED-ONLY-ONBOARD" in ind_ids and "VISIBLE-TO-ONBOARD" in ind_ids,
+      f"got {sorted(ind_ids)}")
+ind_task = next(t for t in data_ind["tasks"] if t["id"] == "INDENTED-ONLY-ONBOARD")
+check("parse.indented_block.status",
+      ind_task.get("status") == "open",
+      str(ind_task.get("status")))
+check("parse.indented_block.what",
+      "leading whitespace" in ind_task.get("what", ""),
+      ind_task.get("what", ""))
+
+del tmp_ind, f_ind, data_ind
+
 tasks = {t["id"]: t for t in data["tasks"]}
 sessions = {s["id"]: s for s in data["sessions"]}
 

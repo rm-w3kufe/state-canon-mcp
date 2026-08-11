@@ -50,9 +50,14 @@ CLOSED_STATUSES = frozenset({
 
 # ── Line-based VSM parser ─────────────────────────────────────────────
 
-_BLOCK_START = re.compile(r'^(task|session)\s*\(\s*"([^"]*)"\s*(.*?)\)\s*[=:]\s*\{?\s*$')
-_SINGLE_LINE_OLD = re.compile(r'^(task|session)\(([^)]+)\)\s*:\s*(.+)$')
-_HEADER_ONLY = re.compile(r'^(task|session)\(([^)]+)\)\s*:\s*$')
+# Leading whitespace TOLERATED on purpose, mirroring scripts/state/onboard.sh
+# (its form A/C census regexes use ^[ \t]*). P4 (BOOT-RECONCILE-2026-08-10
+# round 2): TASKS.vsm may contain a task()/session() definition that starts
+# indented; a column-0-only regex silently hides it from the census, the same
+# failure class as the quoted-'{' P2 bug, one level down.
+_BLOCK_START = re.compile(r'^[ \t]*(task|session)\s*\(\s*"([^"]*)"\s*(.*?)\)\s*[=:]\s*\{?\s*$')
+_SINGLE_LINE_OLD = re.compile(r'^[ \t]*(task|session)\(([^)]+)\)\s*:\s*(.+)$')
+_HEADER_ONLY = re.compile(r'^[ \t]*(task|session)\(([^)]+)\)\s*:\s*$')
 _KV_PAIR = re.compile(r'(\w[\w_]*)\s*[=:]\s*(?:"((?:[^"\\]|\\.)*)"|(\[.*?\]|true|false|[\d.]+|\w[\w_]*))')
 
 
