@@ -52,9 +52,20 @@ class FocusTracker:
 
     def _load(self) -> list[dict[str, Any]]:
         try:
-            return json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text())
         except (json.JSONDecodeError, FileNotFoundError):
             return []
+        # A single flat object {ref, status, note, ...} is a common hand-written
+        # shape, but the documented format is an array of entries. Normalize
+        # instead of letting it flow into reconcilers as a dict whose keys get
+        # iterated as if they were entries (surfaced 2026-08-11: child focus
+        # file was a flat dict → AttributeError 'str' object has no attribute
+        # 'get' in tasks_provider.diff()).
+        if isinstance(data, dict) and "ref" in data:
+            return [data]
+        if isinstance(data, list):
+            return data
+        return []
 
     def _save(self, entries: list[dict[str, Any]]) -> None:
         """Atomic write via temp file + rename (same filesystem)."""
