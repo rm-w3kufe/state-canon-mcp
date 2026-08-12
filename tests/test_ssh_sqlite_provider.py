@@ -131,7 +131,20 @@ with mock.patch("subprocess.run", return_value=_mock_run(
     check("ssh-ops.load-parses-host", provider.host == "root@n02", provider.host)
     check("ssh-ops.load-parses-path", provider.path == "/var/lib/vsf-state/state.db", provider.path)
     check("ssh-ops.load-has-known-domains",
-          {"rules", "services", "deploys"} <= set(provider.list_domains()))
+          {"services", "deploys"} <= set(provider.list_domains()))
+    check("ssh-ops.load-rules-retracted", "rules" not in provider.list_domains())
+
+    # R7 (2026-08-11): domain 'rules' is retracted from the VSF ops canon —
+    # querying it must raise a loud not-served error pointing at the canonical
+    # source (hard_rules.vsm), NOT return a silent [] like an unmapped domain.
+    try:
+        provider.query("rules")
+        check("ssh-ops.query-rules-not-served", False, "should have raised")
+    except ValueError as e:
+        check("ssh-ops.query-rules-not-served",
+              "hard_rules.vsm" in str(e), str(e))
+    check("ssh-ops.query-other-domain-still-works",
+          provider.query("services") == [{"name": "services"}])
 
 try:
     ssh_sqlite_ops.load("root@n02:/var/lib/vsf-state/state.db")  # colon, not comma
