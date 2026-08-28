@@ -22,8 +22,8 @@ from state_canon.server import StateRagServer  # noqa: E402
 
 DB = os.environ.get("STATE_CANON_TEST_DB")
 if not DB or not Path(DB).exists():
-    print("SKIP: set STATE_CANON_TEST_DB to an ops-DB snapshot")
-    sys.exit(2)
+    import pytest
+    pytest.skip("set STATE_CANON_TEST_DB to an ops-DB snapshot", allow_module_level=True)
 
 PASSED = 0
 
