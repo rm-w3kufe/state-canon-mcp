@@ -37,6 +37,7 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 def sh(repo: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t",
+                    "-c", "commit.gpgsign=false",
                     *args], check=True, capture_output=True)
 
 

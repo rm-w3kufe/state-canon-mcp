@@ -5,6 +5,23 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.9.1] — 2026-08-27
+
+### Fixed
+- **Git provider test** — fixed GPG signing timeout in test environment by adding
+  `-c commit.gpgsign=false` to git commands. Tests now pass in CI environments
+  without GPG keys configured.
+
+### Added
+- **GitHub Actions workflow** — automated testing on push/PR to main. Tests run
+  against Python 3.10-3.13 matrix. Verifies server initialization and all test
+  suites.
+
+### Changed
+- **Version sync** — `server.py` now imports `__version__` from `__init__.py`
+  instead of hardcoding the version string. Ensures consistent version reporting
+  across all entry points.
+
 ## [0.9.0] — 2026-07-31
 
 ### Added

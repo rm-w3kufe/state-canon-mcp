@@ -63,7 +63,7 @@ CLOSED_STATUSES = frozenset({
 # round 2): TASKS.vsm may contain a task()/session() definition that starts
 # indented; a column-0-only regex silently hides it from the census, the same
 # failure class as the quoted-'{' P2 bug, one level down.
-_BLOCK_START = re.compile(r'^[ \t]*(task|session)\s*\(\s*"([^"]*)"\s*(.*?)\)\s*[=:]\s*\{?\s*$')
+_BLOCK_START = re.compile(r'^[ \t]*(task|session)\s*\(\s*(?:"([^"]*)"|([A-Za-z0-9_.\-]+))\s*(.*?)\)\s*[=:]\s*\{?\s*$')
 _SINGLE_LINE_OLD = re.compile(r'^[ \t]*(task|session)\(([^)]+)\)\s*:\s*(.+)$')
 _HEADER_ONLY = re.compile(r'^[ \t]*(task|session)\(([^)]+)\)\s*:\s*$')
 _KV_PAIR = re.compile(r'(\w[\w_]*)\s*[=:]\s*(?:"((?:[^"\\]|\\.)*)"|(\[.*?\]|true|false|[\d.]+|\w[\w_]*))')
@@ -366,8 +366,8 @@ def parse_vsm_file(path: str | Path) -> dict[str, Any]:
         m = _BLOCK_START.match(line)
         if m:
             block_type = m.group(1)
-            block_id = m.group(2)
-            attr_str = m.group(3)
+            block_id = m.group(2) or m.group(3)  # quoted form B or bare form A
+            attr_str = m.group(4)
             attrs = _tokenize_attributes(attr_str)
             has_open_brace = "{" in line
 

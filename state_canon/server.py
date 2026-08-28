@@ -26,6 +26,7 @@ from .focus import FocusTracker
 from .journal import StateJournal
 from .provider import JsonStateProvider, StateProvider
 from .reconcile import Reconciler
+from . import __version__
 
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -210,7 +211,7 @@ class StateRagServer:
         if method == "initialize":
             return {"protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "state-canon", "version": "0.9.0"}}
+                    "serverInfo": {"name": "state-canon", "version": __version__}}
         if method == "ping":
             return {}
         if method == "tools/list":
