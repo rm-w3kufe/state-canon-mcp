@@ -1,5 +1,11 @@
 # state-canon — verified ground truth for agents
 
+[![CI](https://github.com/rm-w3kufe/state-canon-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/rm-w3kufe/state-canon-mcp/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![MCP Compatible](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
+[![No Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#install)
+
 > **An agent grounded in verified canon does more careful work than one running on recall — and burns fewer tokens.**
 > `state-canon` keeps a **canonical, reconciled record of the system** — the authoritative version of the
 > world state, written on every change and reconciled against reality — and puts it *in the agent's path*,
