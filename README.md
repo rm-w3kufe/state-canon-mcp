@@ -350,6 +350,55 @@ state-canon/
     ├── EXPERIMENT.md · RESULTS.md · GROUND_TRUTH.md · TASKS.md
 ```
 
+## Integration with vOS tools
+
+`state-canon` is the ground truth layer. Here's how it integrates with the vOS tool ecosystem:
+
+### Hierarchy
+
+```
+socratic-engine (reasoning)
+    ↓ evaluates
+state-canon (truth) ← you are here
+    ↓ grounds
+vsf-common (coupling)
+    ↓
+vsf-rsi / vsf-tools / your package
+```
+
+### Prerequisites
+
+None — `state-canon-mcp` is stdlib-only. For full agent integration:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| `socratic-engine` | Decision evaluation | `pip install socratic-engine>=0.2.5` |
+| `vsf-rsi` | Recursive improvement | `pip install vsf-rsi` |
+
+### Usage with other tools
+
+```python
+# 1. Query ground truth
+from state_canon import StateCanon
+canon = StateCanon()
+state = canon.query("services", {"name": "api"})
+
+# 2. Feed to socratic-engine for evaluation
+from socratic_engine import SocraticEngine
+engine = SocraticEngine()
+result = engine.evaluate(tree, {"state": state})
+
+# 3. Record outcome in vsf-rsi
+from vsf_rsi.scenario_memory import record
+record({
+    "fault_signature": "api_drift",
+    "decision": "reconcile",
+    "outcome": "success"
+})
+```
+
+For agent workflows, see [METHODOLOGY.md](./METHODOLOGY.md) for the full single-agent loop pattern.
+
 ## Lineage & philosophy
 
 Built on Stafford Beer's **Viable System Model** and the **Cybersyn** project (Chile, 1971) — a system is
