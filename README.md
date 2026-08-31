@@ -350,35 +350,84 @@ state-canon/
     ├── EXPERIMENT.md · RESULTS.md · GROUND_TRUTH.md · TASKS.md
 ```
 
-## Integration with vOS tools
+## Integration with agent systems
 
-`state-canon` is the ground truth layer. Here's how it integrates with the vOS tool ecosystem:
+`state-canon` provides ground truth for any AI agent or human operator. Here's how to use it:
 
-### Hierarchy
+### What it does
 
-```
-socratic-engine (reasoning)
-    ↓ evaluates
-state-canon (truth) ← you are here
-    ↓ grounds
-vsf-common (coupling)
-    ↓
-vsf-rsi / vsf-tools / your package
+```text
+"What is actually running?"
+"Has reality drifted from the declared state?"
 ```
 
-### Prerequisites
+### Integration by platform
 
-None — `state-canon-mcp` is stdlib-only. For full agent integration:
+#### OpenCode
 
-| Tool | Purpose | Install |
-|------|---------|---------|
-| `socratic-engine` | Decision evaluation | `pip install socratic-engine>=0.2.5` |
-| `vsf-rsi` | Recursive improvement | `pip install vsf-rsi` |
+Add to `opencode.json`:
 
-### Usage with other tools
+```json
+{
+  "mcp": {
+    "state-canon": {
+      "type": "local",
+      "command": [
+         "python3", "/path/to/mcp_server.py",
+         "--instance", "/path/to/your_state.py",
+         "--journal", "/path/to/journal.db"
+       ]
+    }
+  }
+}
+```
+
+Then use via MCP tools: `state_onboard`, `state_query`, `state_verify`, `state_reconcile`.
+
+#### Claude Code
+
+Add to `CLAUDE.md`:
+
+```markdown
+## Tools
+- `state_canon.query(domain, filter)` — get ground truth
+- `state_canon.verify(domain, filter, expect)` — check claims against reality
+```
+
+#### Any Python agent
 
 ```python
-# 1. Query ground truth
+from state_canon import StateCanon
+
+canon = StateCanon()
+
+# Query ground truth
+state = canon.query("services", {"name": "api"})
+
+# Verify a claim
+result = canon.verify("services", {"name": "api"}, {"actual": "running"})
+print(result.holds)  # True or False with evidence
+```
+
+#### Human CLI
+
+```bash
+git clone https://github.com/rm-w3kufe/state-canon-mcp.git
+cd state-canon-mcp
+
+# Query state
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state_query","arguments":{"domain":"services"}}}' \
+  | python3 mcp_server.py --microstack corpus/microstack
+
+# Verify claim
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state_verify","arguments":{"domain":"services","filter":{"name":"cache"},"expect":{"actual":"running"}}}}' \
+  | python3 mcp_server.py --microstack corpus/microstack
+```
+
+### Full pattern with other tools
+
+```python
+# 1. Get ground truth
 from state_canon import StateCanon
 canon = StateCanon()
 state = canon.query("services", {"name": "api"})
@@ -397,7 +446,7 @@ record({
 })
 ```
 
-For agent workflows, see [METHODOLOGY.md](./METHODOLOGY.md) for the full single-agent loop pattern.
+For the full methodology, see [METHODOLOGY.md](./METHODOLOGY.md).
 
 ## Lineage & philosophy
 
