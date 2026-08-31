@@ -394,21 +394,6 @@ Add to `CLAUDE.md`:
 - `state_canon.verify(domain, filter, expect)` — check claims against reality
 ```
 
-#### Any Python agent
-
-```python
-from state_canon import StateCanon
-
-canon = StateCanon()
-
-# Query ground truth
-state = canon.query("services", {"name": "api"})
-
-# Verify a claim
-result = canon.verify("services", {"name": "api"}, {"actual": "running"})
-print(result.holds)  # True or False with evidence
-```
-
 #### Human CLI
 
 ```bash
