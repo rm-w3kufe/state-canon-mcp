@@ -97,7 +97,7 @@ content RAG, your memory server, your other tools. The discipline that keeps the
 
 ```bash
 git clone https://github.com/rm-w3kufe/state-canon-mcp.git state-canon
-python3 state-canon/tests/test_state_canon.py   # optional: 22 checks, ~1s
+python3 state-canon/tests/test_state_canon.py   # optional: 28 checks, ~1s
 ```
 
 The server is one command (stdio; your MCP client spawns it):
@@ -304,15 +304,16 @@ onboard wins broad tasks, lazy MCP wins narrow ones, cold always loses — repor
 | piece | state |
 |---|---|
 | Thesis + method | ✅ in daily use |
-| MCP server (stdlib-only) | ✅ 22/22 checks + end-to-end stdio smoke |
+| MCP server (stdlib-only) | ✅ 28/28 checks + end-to-end stdio smoke |
 | Controlled corpus + experiment | ✅ trade-off characterized (onboard wins broad, lazy query wins narrow, cold always loses; correctness intact) |
 | Second living instance (SQLite over a real production canon) | ✅ 14/14 structural checks; digest policy born from a real 44k→12k lesson |
 | Git/VCS instance | ✅ `GitStateProvider` + reconciler (`--git`); the three drift kinds fall out of `git status`; read-only; 17/17 checks |
+| SSH SQLite instance | ✅ `SshSqliteStateProvider` — remote SQLite over SSH subprocess; read-only by construction; `shlex.quote()` for shell metacharacters; 20/20 checks |
 | Remote mode (remote state, local server) | ✅ by design at the provider layer; remote MCP *transport* = open integration point, not shipped |
 | Session journal (snapshot / diff / trend) | ✅ opt-in via `--journal`; 28/28 checks incl. degrade-to-zero when the instance-specific `JOURNAL_STATS_FN`/`JOURNAL_RAG_FN` hooks aren't supplied |
-| VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 60/60 checks (VSM parser + TaskSessionReconciler catches stale tasks + FocusTaskReconciler catches stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`; provider + both reconcilers reload on mtime change, `bind_focus_tracker` keeps focus reads and writes on the same live store). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
+| VSM task-file provider + Focus (read/write) | ✅ tasks_provider: 68/68 checks (VSM parser + TaskSessionReconciler catches stale tasks + FocusTaskReconciler catches stale focus entries: `stale_focus_task_done`, `stale_focus_session_resolved`; provider + both reconcilers reload on mtime change, `bind_focus_tracker` keeps focus reads and writes on the same live store). FocusTracker: 42/42 checks (`--focus` flag, `state_focus_mark`/`close`, atomic write, dogfooded on own focus.json) |
 | End-to-end smoke (subprocess stdio) | ✅ 27/27 checks — spawns real MCP server with `--instance + --focus + --journal`, sends JSON-RPC over stdio, asserts reconcile patterns, focus mark/close, journal persist, onboard digest |
-| FreshnessReconciler | ✅ `state_canon/freshness.py` — generic core reconciler: flags missing or stale files by mtime vs max_age. Two drift kinds (`missing`, `stale`). Domain-configurable. Stdlib-only, 24/24 checks. |
+| FreshnessReconciler | ✅ `state_canon/freshness.py` — generic core reconciler: flags missing or stale files by mtime vs max_age. Two drift kinds (`missing`, `stale`). Domain-configurable. Stdlib-only, 6 pytest tests. |
 | Provider-contract safeguard (state_verify vs declared/observed) | ✅ `state_verify` cross-checks the provider against any registered reconciler's `observe()` and surfaces a warning on disagreement; 22/22 checks (`tests/test_housekeeping_fixes.py`, also covers duplicate-key drift detection, focus.py concurrent-write locking, JsonStateProvider mtime reload + unknown-filter parity with SqliteStateProvider, digest.py fallback labeling) |
 | Skills (9) + agent spec (1) | ✅ the disciplines and the single-agent spec, installable |
 | Publication-grade token counters (real MCP attach + billed usage) | ⬜ pending |
@@ -339,11 +340,28 @@ state-canon/
 ├── README.md            ← this file (what it is · install · usage · status)
 ├── METHODOLOGY.md       ← the canon-grounded agent (the method behind the tool)
 ├── INTERFACE.md         ← extending & integrating (abstraction · git · remote · composition)
+├── CHANGELOG.md         ← what changed, by version
+├── LICENSE
 ├── skills/              ← the disciplines as portable skills (9 · installable in Claude Code)
 ├── agents/              ← the agent as an adoptable spec
 ├── mcp_server.py        ← one-file launcher for any MCP client
-├── state_canon/           ← the library (stdlib): provider · sqlite_provider · git_provider · reconcile · digest · journal · server
-├── instances/           ← reference instances (microstack demo · a real SQLite canon · git)
+├── state_canon/         ← the library (stdlib)
+│   ├── provider.py      ← StateProvider ABC + JsonStateProvider
+│   ├── server.py        ← MCP stdio server (JSON-RPC dispatch, 9 tools, 4 resources)
+│   ├── digest.py        ← compact onboard digest
+│   ├── reconcile.py     ← Reconciler ABC + Drift dataclass
+│   ├── journal.py       ← StateJournal (snapshot/diff/trend over SQLite)
+│   ├── focus.py         ← FocusTracker (atomic read-write, flock)
+│   ├── freshness.py     ← FreshnessReconciler (stale/missing files by mtime)
+│   ├── sqlite_provider.py ← SqliteStateProvider (read-only)
+│   ├── ssh_sqlite_provider.py ← SshSqliteStateProvider (remote SQLite over SSH)
+│   └── git_provider.py  ← GitStateProvider + GitReconciler
+├── instances/           ← reference instances
+│   ├── microstack.py    ← demo (manifest vs processes)
+│   ├── sqlite_ops.py    ← production ops DB
+│   ├── ssh_sqlite_ops.py ← remote SSH variant
+│   └── tasks_provider.py ← VSM task/session parser + reconcilers
+├── tests/               ← test suites (254 check() calls + 6 pytest tests)
 └── corpus/microstack/   ← controlled measurement corpus
     ├── raw/             ← what a COLD agent faces (must synthesize)
     ├── synthesized/     ← the reconciled state (the canon's product)
