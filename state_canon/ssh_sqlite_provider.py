@@ -24,28 +24,51 @@ INTERFACE.md's own rule) and a `sqlite3` binary on the remote host.
 from __future__ import annotations
 
 import json
+import logging
 import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 from .provider import StateProvider
+
+log = logging.getLogger(__name__)
+
+# Retry config for transient lock errors (database is locked / SQLITE_BUSY)
+_MAX_RETRIES = 3
+_BASE_DELAY = 0.5  # seconds — exponential backoff: 0.5, 1.0, 2.0
 
 
 class RemoteQueryError(RuntimeError):
     """A remote sqlite3 invocation failed (SSH, or the query itself)."""
 
 
+def _is_lock_error(stderr: str) -> bool:
+    """Detect SQLite lock/busy errors that are transient and retryable."""
+    lower = stderr.lower()
+    return any(phrase in lower for phrase in [
+        "database is locked",
+        "sqlite_busy",
+        "sqlited locked",
+        "attempt to write a readonly database",  # concurrent write during read
+    ])
+
+
 class SshSqliteStateProvider(StateProvider):
     def __init__(self, host: str, path: str | Path,
                  domains: dict[str, str] | None = None,
                  meta: dict[str, Any] | None = None,
-                 ssh_opts: list[str] | None = None):
+                 ssh_opts: list[str] | None = None,
+                 max_retries: int = _MAX_RETRIES,
+                 base_delay: float = _BASE_DELAY):
         self.host = host
         self.path = str(path)
         self._ssh_opts = ssh_opts or ["-o", "ConnectTimeout=10", "-o", "BatchMode=yes"]
         self._meta = dict(meta or {})
         self._meta.setdefault("source", f"{host}:{path}")
+        self._max_retries = max_retries
+        self._base_delay = base_delay
         if domains is None:
             rows = self._run_json(
                 "SELECT name FROM sqlite_master WHERE type IN ('table','view')")
@@ -68,15 +91,35 @@ class SshSqliteStateProvider(StateProvider):
         remote_argv = ["sqlite3", "-readonly", "-json", self.path, sql]
         remote_cmd = " ".join(shlex.quote(a) for a in remote_argv)
         cmd = ["ssh", *self._ssh_opts, self.host, remote_cmd]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        except subprocess.TimeoutExpired as e:
-            raise RemoteQueryError(f"SSH query to {self.host} timed out") from e
-        if result.returncode != 0:
+
+        last_error = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            except subprocess.TimeoutExpired as e:
+                raise RemoteQueryError(f"SSH query to {self.host} timed out") from e
+
+            if result.returncode == 0:
+                out = result.stdout.strip()
+                return json.loads(out) if out else []
+
+            stderr = result.stderr.strip()
+            if _is_lock_error(stderr) and attempt < self._max_retries:
+                delay = self._base_delay * (2 ** attempt)
+                log.warning(
+                    "sqlite lock on %s (attempt %d/%d), retrying in %.1fs: %s",
+                    self.host, attempt + 1, self._max_retries + 1, delay, stderr,
+                )
+                time.sleep(delay)
+                last_error = stderr
+                continue
+
             raise RemoteQueryError(
-                f"remote sqlite3 on {self.host} failed: {result.stderr.strip()}")
-        out = result.stdout.strip()
-        return json.loads(out) if out else []
+                f"remote sqlite3 on {self.host} failed: {stderr}")
+
+        # Exhausted retries
+        raise RemoteQueryError(
+            f"remote sqlite3 on {self.host} failed after {self._max_retries + 1} attempts: {last_error}")
 
     def list_domains(self) -> list[str]:
         return list(self._domains) + ["meta"]
