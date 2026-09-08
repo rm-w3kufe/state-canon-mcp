@@ -90,6 +90,27 @@ TOOLS = [
                      "properties": {"ref": {"type": "string", "description": "focus entry identifier"},
                                     "note": {"type": "string", "description": "optional closing note"}},
                      "required": ["ref"]}},
+    # ── Schema evolution tools (opt-in, --schema-evo) ──
+    {"name": "state_schema_evo_status",
+     "description": "CHEAP (~80 tok): current schema evolution state — domains tracked, drifts, patterns.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "state_schema_evo_snapshot",
+     "description": "MODERATE (~150 tok): take schema snapshots for all domains. Required before drift detection.",
+     "inputSchema": {"type": "object",
+                     "properties": {"domains": {"type": "array", "items": {"type": "string"},
+                                               "description": "optional list of domains (default: all)"}}}},
+    {"name": "state_schema_evo_drift",
+     "description": "CHEAP (~80 tok): detect schema drift by comparing latest snapshots.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "state_schema_evo_patterns",
+     "description": "MODERATE (~120 tok): analyze drift patterns over recent history.",
+     "inputSchema": {"type": "object",
+                     "properties": {"lookback": {"type": "integer", "description": "snapshots to analyze (default 10)"},
+                                    "min_occurrences": {"type": "integer", "description": "min occurrences (default 3)"}}}},
+    {"name": "state_schema_evo_propose",
+     "description": "MODERATE (~120 tok): propose schema changes based on drift patterns.",
+     "inputSchema": {"type": "object",
+                     "properties": {"confidence_threshold": {"type": "number", "description": "min confidence (default 0.7)"}}}},
 ]
 
 RESOURCES = [
@@ -97,13 +118,15 @@ RESOURCES = [
     {"uri": "state://schema", "name": "schema", "description": "domains + fields", "mimeType": "application/json"},
     {"uri": "state://rules", "name": "rules", "description": "active rules", "mimeType": "application/json"},
     {"uri": "state://handoff", "name": "handoff", "description": "last decision / handoff", "mimeType": "application/json"},
+    {"uri": "state://schema-history", "name": "schema-history", "description": "schema snapshots over time", "mimeType": "application/json"},
 ]
 
 
 class StateRagServer:
     def __init__(self, provider: StateProvider, reconcilers: list[Reconciler] | None = None,
                  digest_policy: dict | None = None, journal_db: str | None = None,
-                 focus_file: str | None = None, journal_stats_fn=None, journal_rag_fn=None):
+                 focus_file: str | None = None, journal_stats_fn=None, journal_rag_fn=None,
+                 schema_evo_file: str | None = None):
         self.provider = provider
         self.reconcilers = reconcilers or []
         self.digest_policy = digest_policy
@@ -120,6 +143,11 @@ class StateRagServer:
                 bind = getattr(rec, "bind_focus_tracker", None)
                 if bind:
                     bind(self.focus)
+        # Schema evolution (opt-in, --schema-evo)
+        self._schema_evolution = None
+        if schema_evo_file:
+            from .schema_evolution import SchemaEvolution
+            self._schema_evolution = SchemaEvolution(schema_evo_file)
 
     # ── tool implementations ──
     def state_onboard(self) -> str:
@@ -193,6 +221,12 @@ class StateRagServer:
         if uri == "state://handoff":
             meta = (self.provider.query("meta") or [{}])[0]
             return "application/json", json.dumps(meta.get("last_decision", {}), indent=1)
+        if uri == "state://schema-history":
+            if hasattr(self, "_schema_evolution"):
+                history = self._schema_evolution.tracker.get_history("")
+                return "application/json", json.dumps(
+                    [s.to_dict() for s in history[-50:]], indent=1)
+            return "application/json", json.dumps({"error": "schema evolution not enabled"}, indent=1)
         raise ValueError(f"unknown resource: {uri}")
 
     # ── JSON-RPC dispatch (pure function of request → response | None) ──
@@ -246,6 +280,16 @@ class StateRagServer:
             return self._focus_mark(args["ref"], args.get("status"), args.get("note"))
         if name == "state_focus_close":
             return self._focus_close(args["ref"], args.get("note"))
+        if name == "state_schema_evo_status":
+            return self.state_schema_evo_status()
+        if name == "state_schema_evo_snapshot":
+            return self.state_schema_evo_snapshot(args.get("domains"))
+        if name == "state_schema_evo_drift":
+            return self.state_schema_evo_drift()
+        if name == "state_schema_evo_patterns":
+            return self.state_schema_evo_patterns(args.get("lookback", 10), args.get("min_occurrences", 3))
+        if name == "state_schema_evo_propose":
+            return self.state_schema_evo_propose(args.get("confidence_threshold", 0.7))
         raise ValueError(f"unknown tool: {name}")
 
     # ── journal tools ──
@@ -295,6 +339,58 @@ class StateRagServer:
             return {"error": "focus not enabled (start server with --focus)"}
         entry = self.focus.close(ref, note=note)
         return {"ref": entry["ref"], "status": entry["status"], "updated_at": entry["updated_at"]}
+
+    # ── schema evolution tools (opt-in, --schema-evo) ──
+
+    def state_schema_evo_status(self) -> dict:
+        """Get schema evolution status."""
+        if not hasattr(self, "_schema_evolution"):
+            return {"error": "schema evolution not enabled (start server with --schema-evo)"}
+        return self._schema_evolution.get_status()
+
+    def state_schema_evo_snapshot(self, domains: list[str] | None = None) -> dict:
+        """Take schema snapshots for all domains."""
+        if not hasattr(self, "_schema_evolution"):
+            return {"error": "schema evolution not enabled (start server with --schema-evo)"}
+        snapshots = self._schema_evolution.snapshot_all(self.provider, domains)
+        return {
+            "snapshots_taken": len(snapshots),
+            "domains": [s.domain for s in snapshots],
+            "timestamp": snapshots[0].timestamp if snapshots else None,
+        }
+
+    def state_schema_evo_drift(self) -> dict:
+        """Detect schema drift."""
+        if not hasattr(self, "_schema_evolution"):
+            return {"error": "schema evolution not enabled (start server with --schema-evo)"}
+        drifts = self._schema_evolution.detect_drift()
+        return {
+            "drift_count": len(drifts),
+            "drifts": [d.to_dict() for d in drifts],
+            "drift_kinds": list(set(d.kind for d in drifts)) if drifts else [],
+        }
+
+    def state_schema_evo_patterns(self, lookback: int = 10,
+                                   min_occurrences: int = 3) -> dict:
+        """Analyze drift patterns."""
+        if not hasattr(self, "_schema_evolution"):
+            return {"error": "schema evolution not enabled (start server with --schema-evo)"}
+        patterns = self._schema_evolution.analyze_patterns(lookback, min_occurrences)
+        return {
+            "pattern_count": len(patterns),
+            "patterns": [p.to_dict() for p in patterns],
+            "high_confidence": len([p for p in patterns if p.confidence > 0.7]),
+        }
+
+    def state_schema_evo_propose(self, confidence_threshold: float = 0.7) -> dict:
+        """Propose schema changes based on drift patterns."""
+        if not hasattr(self, "_schema_evolution"):
+            return {"error": "schema evolution not enabled (start server with --schema-evo)"}
+        proposals = self._schema_evolution.propose(self.provider, confidence_threshold)
+        return {
+            "proposal_count": len(proposals),
+            "proposals": proposals,
+        }
 
     # ── stdio loop ──
     def serve(self) -> None:
@@ -352,6 +448,8 @@ def main() -> None:
     ap.add_argument("--focus", metavar="PATH",
                     help="enable state_focus_* tools + state_query('focus'), "
                          "persisting per-agent focus entries to PATH (JSON)")
+    ap.add_argument("--schema-evo", metavar="PATH",
+                    help="enable state_schema_evo_* tools, persisting schema history to PATH (JSON)")
     args = ap.parse_args()
 
     journal_stats_fn = journal_rag_fn = None
@@ -375,7 +473,8 @@ def main() -> None:
         ap.error("need one of --state, --sqlite, --git, --microstack, --instance")
 
     StateRagServer(provider, reconcilers, policy, journal_db=args.journal, focus_file=args.focus,
-                   journal_stats_fn=journal_stats_fn, journal_rag_fn=journal_rag_fn).serve()
+                   journal_stats_fn=journal_stats_fn, journal_rag_fn=journal_rag_fn,
+                   schema_evo_file=args.schema_evo).serve()
 
 
 if __name__ == "__main__":

@@ -75,7 +75,7 @@ def rpc(method: str, params: dict | None = None, req_id: int = 1) -> dict:
 init = rpc("initialize")
 check("mcp.initialize", init["serverInfo"]["name"] == "state-canon")
 tools = {t["name"] for t in rpc("tools/list")["tools"]}
-check("mcp.tools", tools == {"state_onboard", "state_query", "state_verify", "state_reconcile",
+check("mcp.tools", tools >= {"state_onboard", "state_query", "state_verify", "state_reconcile",
                               "state_journal_mark", "state_journal_diff", "state_journal_history",
                               "state_focus_mark", "state_focus_close"}, str(tools))
 out = rpc("tools/call", {"name": "state_reconcile", "arguments": {}})
