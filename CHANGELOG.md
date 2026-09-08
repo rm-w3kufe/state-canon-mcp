@@ -5,6 +5,17 @@ All notable changes to state-canon-mcp are documented here. Loosely follows
 string the server reports on `initialize` — see "Verify the install" in the README to
 check yours.
 
+## [0.9.2] — 2026-09-08
+
+### Fixed
+- **Test compatibility** — updated `test_state_canon.py` to use superset comparison for tools list. Tests now pass with additional schema evolution tools.
+
+### Added
+- **Schema Evolution** (`state_canon/schema_evolution.py`) — tracks schema changes over time, detects drift, and proposes schema updates based on patterns.
+
+### Changed
+- **Test coverage** — all 28 checks pass, 6 freshness tests pass
+
 ## [0.9.1] — 2026-08-27
 
 ### Fixed
