@@ -12,10 +12,14 @@ Read-only by construction: `sqlite3 -readonly` refuses writes even if a
 query tried one, and this class never builds anything but SELECT statements.
 
 Cost/staleness, stated plainly (per INTERFACE.md's own guidance — "declare
-it"): every query is a real SSH round-trip, there is no caching here. Fine
-for on-demand queries and onboard digests; if a caller needs many queries
-per second, wrap this provider with a caching layer rather than assuming
-sub-millisecond latency the way the local SqliteStateProvider has.
+it"): every LOGICAL query is a real SSH round-trip, there is no caching
+here. The TRANSPORT, however, is multiplexed: all ssh invocations share
+one ControlMaster per (user, host, port), so only the first query of a
+burst pays the full handshake (~6s over two hops); follow-ups reuse the
+master at local-spawn cost. Fine for on-demand queries and onboard
+digests; if a caller needs many queries per second, wrap this provider
+with a caching layer rather than assuming sub-millisecond latency the
+way the local SqliteStateProvider has.
 
 Requires: passwordless SSH access to `host` already configured (key-based,
 outside this code — never pass credentials as a provider argument, per
@@ -38,6 +42,30 @@ log = logging.getLogger(__name__)
 # Retry config for transient lock errors (database is locked / SQLITE_BUSY)
 _MAX_RETRIES = 3
 _BASE_DELAY = 0.5  # seconds — exponential backoff: 0.5, 1.0, 2.0
+
+# Connection multiplexing (FND-MCP-INFRA-ONBOARD-01, 2026-09-29): an onboard
+# digest fans out to one SSH round-trip per domain (~6s each over two hops
+# without multiplexing), which exceeds MCP client timeouts. Sharing one
+# ControlMaster per (user, host, port) keeps the first-query cost and makes
+# follow-ups ~local-spawn. ControlPersist keeps the master 600s past last
+# use; a dead socket falls back to a fresh handshake (ssh handles that
+# itself — no code path needed). The socket lives directly in ~/.ssh (no
+# subdirectory to create); the mkdir below is belt-and-braces for fresh
+# machines where even ~/.ssh may not exist yet.
+_CONTROL_SOCKET = "~/.ssh/cm-%r@%h:%p"
+_CONTROL_OPTS = [
+    "-o", "ControlMaster=auto",
+    "-o", "ControlPersist=600",
+    "-o", f"ControlPath={_CONTROL_SOCKET}",
+]
+
+
+def _ensure_control_dir() -> None:
+    try:
+        Path.home().joinpath(".ssh").mkdir(mode=0o700, parents=True,
+                                           exist_ok=True)
+    except OSError as e:
+        log.warning("cannot ensure ~/.ssh for ControlPath: %s", e)
 
 
 class RemoteQueryError(RuntimeError):
@@ -64,7 +92,11 @@ class SshSqliteStateProvider(StateProvider):
                  base_delay: float = _BASE_DELAY):
         self.host = host
         self.path = str(path)
-        self._ssh_opts = ssh_opts or ["-o", "ConnectTimeout=10", "-o", "BatchMode=yes"]
+        if ssh_opts is None:
+            _ensure_control_dir()
+            ssh_opts = ["-o", "ConnectTimeout=10", "-o", "BatchMode=yes",
+                        *_CONTROL_OPTS]
+        self._ssh_opts = ssh_opts
         self._meta = dict(meta or {})
         self._meta.setdefault("source", f"{host}:{path}")
         self._max_retries = max_retries
