@@ -222,7 +222,7 @@ class StateRagServer:
             meta = (self.provider.query("meta") or [{}])[0]
             return "application/json", json.dumps(meta.get("last_decision", {}), indent=1)
         if uri == "state://schema-history":
-            if hasattr(self, "_schema_evolution"):
+            if self._schema_evolution is not None:
                 history = self._schema_evolution.tracker.get_history("")
                 return "application/json", json.dumps(
                     [s.to_dict() for s in history[-50:]], indent=1)
@@ -344,13 +344,13 @@ class StateRagServer:
 
     def state_schema_evo_status(self) -> dict:
         """Get schema evolution status."""
-        if not hasattr(self, "_schema_evolution"):
+        if self._schema_evolution is None:
             return {"error": "schema evolution not enabled (start server with --schema-evo)"}
         return self._schema_evolution.get_status()
 
     def state_schema_evo_snapshot(self, domains: list[str] | None = None) -> dict:
         """Take schema snapshots for all domains."""
-        if not hasattr(self, "_schema_evolution"):
+        if self._schema_evolution is None:
             return {"error": "schema evolution not enabled (start server with --schema-evo)"}
         snapshots = self._schema_evolution.snapshot_all(self.provider, domains)
         return {
@@ -361,7 +361,7 @@ class StateRagServer:
 
     def state_schema_evo_drift(self) -> dict:
         """Detect schema drift."""
-        if not hasattr(self, "_schema_evolution"):
+        if self._schema_evolution is None:
             return {"error": "schema evolution not enabled (start server with --schema-evo)"}
         drifts = self._schema_evolution.detect_drift()
         return {
@@ -373,7 +373,7 @@ class StateRagServer:
     def state_schema_evo_patterns(self, lookback: int = 10,
                                    min_occurrences: int = 3) -> dict:
         """Analyze drift patterns."""
-        if not hasattr(self, "_schema_evolution"):
+        if self._schema_evolution is None:
             return {"error": "schema evolution not enabled (start server with --schema-evo)"}
         patterns = self._schema_evolution.analyze_patterns(lookback, min_occurrences)
         return {
@@ -384,7 +384,7 @@ class StateRagServer:
 
     def state_schema_evo_propose(self, confidence_threshold: float = 0.7) -> dict:
         """Propose schema changes based on drift patterns."""
-        if not hasattr(self, "_schema_evolution"):
+        if self._schema_evolution is None:
             return {"error": "schema evolution not enabled (start server with --schema-evo)"}
         proposals = self._schema_evolution.propose(self.provider, confidence_threshold)
         return {
